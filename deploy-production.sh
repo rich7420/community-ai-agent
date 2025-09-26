@@ -77,10 +77,10 @@ fi
 # Stop existing services
 print_status "🛑 Stopping existing services..."
 if [ -f docker-compose.yml ]; then
-    docker-compose down --remove-orphans 2>/dev/null || true
+    docker compose down --remove-orphans 2>/dev/null || true
 fi
 if [ -f docker-compose.debian.yml ]; then
-    docker-compose -f docker-compose.debian.yml down --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.debian.yml down --remove-orphans 2>/dev/null || true
 fi
 
 # Clean up old containers
@@ -110,8 +110,8 @@ fi
 
 # Build and start services
 print_status "🔨 Building and starting production services..."
-docker-compose -f docker-compose.production.yml build --no-cache
-docker-compose -f docker-compose.production.yml up -d
+docker compose -f docker-compose.production.yml build --no-cache
+docker compose -f docker-compose.production.yml up -d
 
 # Wait for services to be ready
 print_status "⏳ Waiting for services to be ready..."
@@ -125,7 +125,7 @@ sleep 60
 
 # Check service status
 print_status "📊 Checking service status..."
-docker-compose -f docker-compose.production.yml ps
+docker compose -f docker-compose.production.yml ps
 
 # Test services
 print_status "🧪 Testing services..."
@@ -161,13 +161,13 @@ echo "  API Docs: https://opensource4you.917420.xyz/api/docs"
 echo "  Health Check: https://opensource4you.917420.xyz/health"
 echo ""
 print_status "🔧 Management Commands:"
-echo "  View logs: docker-compose -f docker-compose.production.yml logs -f"
-echo "  Stop services: docker-compose -f docker-compose.production.yml down"
-echo "  Restart services: docker-compose -f docker-compose.production.yml restart"
-echo "  Update services: docker-compose -f docker-compose.production.yml pull && docker-compose -f docker-compose.production.yml up -d"
+echo "  View logs: docker compose -f docker-compose.production.yml logs -f"
+echo "  Stop services: docker compose -f docker-compose.production.yml down"
+echo "  Restart services: docker compose -f docker-compose.production.yml restart"
+echo "  Update services: docker compose -f docker-compose.production.yml pull && docker compose -f docker-compose.production.yml up -d"
 echo ""
 print_status "📚 Production Tips:"
-echo "  - Monitor logs: docker-compose -f docker-compose.production.yml logs -f app"
+echo "  - Monitor logs: docker compose -f docker-compose.production.yml logs -f app"
 echo "  - Check SSL certificate expiry: sudo certbot certificates"
 echo "  - Set up automated backups for PostgreSQL and MinIO"
 echo "  - Monitor disk space for logs and data volumes"
