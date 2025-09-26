@@ -2,39 +2,39 @@
 
 一個基於RAG（檢索增強生成）技術的AI助手，專門為Apache Local Community Taipei社群設計，能夠回答關於社群成員、專案和活動的問題。
 
-## 功能特色
+## Features
 
-- **源來適你AI助手**：小饅頭，友善的AI Agent
-- **RAG技術**：基於Slack和GitHub數據的智能問答
-- **語義搜索**：使用Gemini嵌入模型進行精確匹配
-- **自然對話**：支持繁體中文，回答簡潔友好
+- **AI Assistant "小饅頭"**: Friendly AI agent for Apache Local Community Taipei
+- **RAG Technology**: Intelligent Q&A based on Slack and GitHub data
+- **Semantic Search**: Precise matching using Gemini embedding models
+- **Natural Conversation**: Supports Traditional Chinese with concise and friendly responses
 
-## 技術架構
+## Technical Architecture
 
-- **後端**：Python + FastAPI + PostgreSQL + FAISS
-- **前端**：React + TypeScript + Tailwind CSS
-- **AI模型**：Grok-4 (OpenRouter) + Gemini Embeddings
-- **數據源**：Slack API + GitHub API
-- **部署**：Docker Compose + Nginx
+- **Backend**: Python + FastAPI + PostgreSQL + FAISS
+- **Frontend**: React + TypeScript + Tailwind CSS
+- **AI Models**: Grok-4 (OpenRouter) + Gemini Embeddings
+- **Data Sources**: Slack API + GitHub API
+- **Deployment**: Docker Compose + Nginx
 
-## 快速開始
+## Quick Start
 
-### 1. 克隆專案
+### 1. Clone the Project
 
 ```bash
-git clone <this-repo-url>
+git clone https://github.com/rich7420/community-ai-agent.git
 cd community-ai-agent
 ```
 
-### 2. 設置環境變數
+### 2. Environment Setup
 
-複製環境變數範例文件：
+Copy the environment variables template:
 
 ```bash
 cp env.example .env
 ```
 
-編輯 `.env` 文件，填入您的API密鑰：
+Edit the `.env` file with your API keys:
 
 ```bash
 # Slack Configuration
@@ -67,162 +67,162 @@ MINIO_SECRET_KEY=your-minio-secret-key
 REDIS_PASSWORD=your-redis-password
 ```
 
-### 3. 啟動服務
+### 3. Start Services
 
 ```bash
 docker compose up -d
 ```
 
-系統會自動執行以下操作：
-- 啟動所有服務（PostgreSQL、Redis、MinIO、API、前端）
-- 等待依賴服務健康檢查通過
-- 自動初始化數據收集（Slack和GitHub數據）
-- 生成嵌入向量並建立FAISS索引
-- 啟動API服務
+The system will automatically:
+- Start all services (PostgreSQL, Redis, MinIO, API, Frontend)
+- Wait for dependency services health checks to pass
+- Automatically initialize data collection (Slack and GitHub data)
+- Generate embeddings and build FAISS index
+- Start API services
 
-### 4. 訪問應用
+### 4. Access the Application
 
-- **前端界面**：http://localhost:3000
-- **API文檔**：http://localhost:8000/docs
-- **健康檢查**：http://localhost:8000/health
+- **Frontend Interface**: http://localhost:3000
+- **API Documentation**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
 
-## API密鑰獲取
+## API Key Setup
 
 ### Slack API
-1. 訪問 [Slack API](https://api.slack.com/apps)
-2. 創建新應用
-3. 獲取 Bot Token 和 App Token
-4. 設置 OAuth 重定向 URL
+1. Visit [Slack API](https://api.slack.com/apps)
+2. Create a new app
+3. Get Bot Token and App Token
+4. Set up OAuth redirect URLs
 
 ### GitHub API
-1. 訪問 [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
-2. 生成新的 Personal Access Token
-3. 選擇 `repo` 和 `read:org` 權限
+1. Visit [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
+2. Generate a new Personal Access Token
+3. Select `repo` and `read:org` permissions
 
 ### OpenRouter API
-1. 訪問 [OpenRouter](https://openrouter.ai/)
-2. 註冊帳號
-3. 獲取 API Key
+1. Visit [OpenRouter](https://openrouter.ai/)
+2. Register an account
+3. Get API Key
 
 ### Google AI API
-1. 訪問 [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. 創建新的 API Key
+1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Create a new API Key
 
-## 專案結構
+## Project Structure
 
 ```
 community-ai-agent/
-├── src/                    # 後端源代碼
-│   ├── ai/                 # AI相關模組
-│   ├── api/                # API端點
-│   ├── collectors/         # 數據收集器
-│   ├── storage/            # 數據存儲
+├── src/                    # Backend source code
+│   ├── ai/                 # AI-related modules
+│   ├── api/                # API endpoints
+│   ├── collectors/         # Data collectors
+│   ├── storage/            # Data storage
 │   └── ...
-├── frontend-react/         # 前端源代碼
-│   ├── src/               # React組件
-│   ├── public/            # 靜態資源
+├── frontend-react/         # Frontend source code
+│   ├── src/               # React components
+│   ├── public/            # Static assets
 │   └── ...
-├── docker-compose.yml     # Docker編排
-├── env.example           # 環境變數範例
-└── README.md            # 專案說明
+├── docker-compose.yml     # Docker orchestration
+├── env.example           # Environment variables template
+└── README.md            # Project documentation
 ```
 
-## 開發指南
+## Development Guide
 
-### 本地開發
+### Local Development
 
 ```bash
-# 後端開發
+# Backend development
 cd src
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
 
-# 前端開發
+# Frontend development
 cd frontend-react
 npm install
 npm run dev
 ```
 
-### 測試
+### Testing
 
 ```bash
-# 運行測試
+# Run tests
 python -m pytest tests/
 
-# 測試API連接
+# Test API connections
 python tests/test_api_connections.py
 ```
 
-## 部署
+## Deployment
 
-### 本地開發部署
+### Local Development Deployment
 
 ```bash
-# 使用啟動腳本（推薦）
+# Using startup script (recommended)
 ./start.sh
 
-# 或使用通用部署腳本
+# Or using universal deployment script
 ./deploy.sh dev
 ```
 
-### Debian 部署
+### Debian Deployment
 
 ```bash
-# 本地Debian（Docker已安裝）
+# Local Debian (Docker installed)
 ./deploy-debian.sh --local
 
-# GCP Debian（完整設置）
+# GCP Debian (full setup)
 ./deploy-debian.sh --gcp
 
-# 或使用通用部署腳本
+# Or using universal deployment script
 ./deploy.sh debian
 ```
 
-### 生產環境部署
+### Production Deployment
 
-1. 設置生產環境變數
-2. 配置SSL證書
-3. 設置域名和DNS
-4. 運行部署腳本
+1. Set up production environment variables
+2. Configure SSL certificates
+3. Set up domain and DNS
+4. Run deployment script
 
 ```bash
 ./deploy.sh
 ```
 
-### 監控
+### Monitoring
 
-- **Prometheus**：http://localhost:9090
-- **Grafana**：http://localhost:3001
-- **MinIO Console**：http://localhost:9001
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3001
+- **MinIO Console**: http://localhost:9001
 
-## 貢獻指南
+## Contributing
 
-1. Fork 專案
-2. 創建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 開啟 Pull Request
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## 授權
+## License
 
-本專案採用 MIT 授權 - 查看 [LICENSE](LICENSE) 文件了解詳情。
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 支援
+## Support
 
-如有問題或建議，請：
+For questions or suggestions, please:
 
-1. 查看 [文檔](docs/)
-2. 開啟 [Issue](https://github.com/your-username/community-ai-agent/issues)
-3. 聯繫維護者
+1. Check the [documentation](docs/)
+2. Open an [Issue](https://github.com/rich7420/community-ai-agent/issues)
+3. Contact the maintainers
 
-## 致謝
+## Acknowledgments
 
-- Apache Local Community Taipei 社群
-- 所有貢獻者和測試用戶
-- 開源社群的支持
+- Apache Local Community Taipei community
+- All contributors and test users
+- Open source community support
 
 ---
 
-**注意**：請確保不要將包含真實API密鑰的 `.env` 文件提交到版本控制系統中。
+**Note**: Please ensure not to commit `.env` files containing real API keys to version control systems.
