@@ -44,15 +44,28 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Check if SSL certificates exist
-if [ ! -f /etc/ssl/certs/opensource4you.917420.xyz.crt ] || [ ! -f /etc/ssl/private/opensource4you.917420.xyz.key ]; then
+# Check if SSL certificates exist (Let's Encrypt or custom)
+SSL_CERT_FOUND=false
+
+# Check Let's Encrypt certificates first
+if [ -f /etc/letsencrypt/live/opensource4you.917420.xyz/fullchain.pem ] && [ -f /etc/letsencrypt/live/opensource4you.917420.xyz/privkey.pem ]; then
+    print_success "✅ Let's Encrypt certificates found!"
+    SSL_CERT_FOUND=true
+    SSL_CERT_PATH="/etc/letsencrypt/live/opensource4you.917420.xyz/fullchain.pem"
+    SSL_KEY_PATH="/etc/letsencrypt/live/opensource4you.917420.xyz/privkey.pem"
+elif [ -f /etc/ssl/certs/opensource4you.917420.xyz.crt ] && [ -f /etc/ssl/private/opensource4you.917420.xyz.key ]; then
+    print_success "✅ Custom SSL certificates found!"
+    SSL_CERT_FOUND=true
+    SSL_CERT_PATH="/etc/ssl/certs/opensource4you.917420.xyz.crt"
+    SSL_KEY_PATH="/etc/ssl/private/opensource4you.917420.xyz.key"
+else
     print_warning "SSL certificates not found!"
     print_status "Please ensure SSL certificates are installed:"
-    print_status "- /etc/ssl/certs/opensource4you.917420.xyz.crt"
-    print_status "- /etc/ssl/private/opensource4you.917420.xyz.key"
-    print_status ""
-    print_status "You can use Let's Encrypt:"
-    print_status "sudo certbot certonly --standalone -d opensource4you.917420.xyz"
+    print_status "Option 1 - Let's Encrypt:"
+    print_status "  sudo certbot certonly --standalone -d opensource4you.917420.xyz"
+    print_status "Option 2 - Custom certificates:"
+    print_status "  - /etc/ssl/certs/opensource4you.917420.xyz.crt"
+    print_status "  - /etc/ssl/private/opensource4you.917420.xyz.key"
     print_status ""
     read -p "Continue without SSL? (y/N): " -n 1 -r
     echo
@@ -80,11 +93,19 @@ mkdir -p logs/nginx
 mkdir -p docker/nginx/ssl
 
 # Copy SSL certificates if they exist
-if [ -f /etc/ssl/certs/opensource4you.917420.xyz.crt ] && [ -f /etc/ssl/private/opensource4you.917420.xyz.key ]; then
+if [ "$SSL_CERT_FOUND" = true ]; then
     print_status "🔒 Copying SSL certificates..."
-    sudo cp /etc/ssl/certs/opensource4you.917420.xyz.crt docker/nginx/ssl/
-    sudo cp /etc/ssl/private/opensource4you.917420.xyz.key docker/nginx/ssl/
-    sudo chown $USER:$USER docker/nginx/ssl/*
+    mkdir -p docker/nginx/ssl
+    
+    if [ -f "$SSL_CERT_PATH" ] && [ -f "$SSL_KEY_PATH" ]; then
+        sudo cp "$SSL_CERT_PATH" docker/nginx/ssl/opensource4you.917420.xyz.crt
+        sudo cp "$SSL_KEY_PATH" docker/nginx/ssl/opensource4you.917420.xyz.key
+        sudo chown $USER:$USER docker/nginx/ssl/*
+        print_success "✅ SSL certificates copied successfully"
+    else
+        print_error "SSL certificate files not found at specified paths"
+        exit 1
+    fi
 fi
 
 # Build and start services

@@ -157,6 +157,8 @@ services:
       - ./docker/nginx/nginx.production.conf:/etc/nginx/nginx.conf
       - ./docker/nginx/ssl:/etc/ssl/certs
       - ./logs/nginx:/var/log/nginx
+      # Mount Let's Encrypt certificates if they exist
+      - /etc/letsencrypt/live/opensource4you.917420.xyz:/etc/letsencrypt/live/opensource4you.917420.xyz:ro
     depends_on:
       - app
       - frontend
