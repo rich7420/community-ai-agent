@@ -2,20 +2,20 @@
 
 一個基於RAG（檢索增強生成）技術的AI助手，專門為Apache Local Community Taipei社群設計，能夠回答關於社群成員、專案和活動的問題。
 
-## Features
+## 功能特色
 
-- **AI Assistant "小饅頭"**: Friendly AI agent for Apache Local Community Taipei
-- **RAG Technology**: Intelligent Q&A based on Slack and GitHub data
-- **Semantic Search**: Precise matching using Gemini embedding models
-- **Natural Conversation**: Supports Traditional Chinese with concise and friendly responses
+- **源來適你AI助手**：小饅頭，友善的AI Agent
+- **RAG技術**：基於Slack和GitHub數據的智能問答
+- **語義搜索**：使用Gemini嵌入模型進行精確匹配
+- **自然對話**：支持繁體中文，回答簡潔友好
 
-## Technical Architecture
+## 技術架構
 
-- **Backend**: Python + FastAPI + PostgreSQL + FAISS
-- **Frontend**: React + TypeScript + Tailwind CSS
-- **AI Models**: Grok-4 (OpenRouter) + Gemini Embeddings
-- **Data Sources**: Slack API + GitHub API
-- **Deployment**: Docker Compose + Nginx
+- **後端**：Python + FastAPI + PostgreSQL + FAISS
+- **前端**：React + TypeScript + Tailwind CSS
+- **AI模型**：Grok-4 (OpenRouter) + Gemini Embeddings
+- **數據源**：Slack API + GitHub API
+- **部署**：Docker Compose + Nginx
 
 ## Quick Start
 
