@@ -1,0 +1,60 @@
+# Data Sources Configuration
+slack:
+  channels:
+    - id: "C07PLV9QNLF"
+      name: "apache-ozone"
+      enabled: true
+    - id: "C07D4L435B5"
+      name: "apache-airflow"
+      enabled: true
+    - id: "C05PH5KB7NZ"
+      name: "apache-yunikorn"
+      enabled: true
+    - id: "C06G13UUE9J"
+      name: "2024-apache-進香團"
+      enabled: true
+    - id: "C08FRAZEQMU"
+      name: "2025-黃金流沙饅頭營"
+      enabled: true
+    - id: "C050H2YPG3F"
+      name: "全体"
+      enabled: true
+    - id: "C050DD46X2A"
+      name: "随机"
+      enabled: true
+    - id: "C05R3N5P7FW"
+      name: "科技開講和讀書會"
+      enabled: true
+    - id: "C078Y24322K"
+      name: "給學弟妹的矽谷-ai-software-指南"
+      enabled: true
+    - id: "C08MQBVM188"
+      name: "開源健康操"
+      enabled: true
+    - id: "C09054YJWDS"
+      name: "開源菜雞的救贖"
+      enabled: true
+  collection_frequency: "daily"  # daily, weekly
+  max_messages_per_channel: 1000
+
+github:
+  repositories:
+    - name: "opensource4you/readme"
+      enabled: true
+  collection_frequency: "daily"
+  max_issues: 500
+  max_prs: 500
+
+facebook:
+  pages:
+    - id: "opensource4you"  # Page username
+      enabled: false  # Deferred to future work
+  collection_frequency: "daily"
+  max_posts: 100
+
+# Collection schedule
+schedule:
+  slack_collection: "0 2 * * *"  # Daily at 2 AM
+  github_collection: "0 3 * * *"  # Daily at 3 AM
+  # facebook_collection: "0 4 * * *"  # Deferred to future work
+  weekly_report: "0 9 * * 0"  # Weekly on Sunday at 9 AM
