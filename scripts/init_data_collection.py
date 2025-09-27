@@ -63,7 +63,8 @@ def init_data_collection():
                     app_token=os.getenv('SLACK_APP_TOKEN')
                 )
                 
-                slack_messages = slack_collector.collect_all_channels(days_back=30)
+                # 使用新的 collect_bot_channels 方法收集 90 天歷史資料
+                slack_messages = slack_collector.collect_bot_channels(days_back=90)
                 data_merger = DataMerger()
                 slack_records = data_merger.merge_slack_data(slack_messages)
                 all_data.extend(slack_records)
@@ -81,7 +82,7 @@ def init_data_collection():
                     token=os.getenv('GITHUB_TOKEN')
                 )
                 
-                github_data = github_collector.collect_all_repositories(days_back=30)
+                github_data = github_collector.collect_all_repositories(days_back=90)
                 data_merger = DataMerger()
                 github_records = data_merger.merge_github_data(
                     github_data.get('issues', []),

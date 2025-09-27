@@ -108,6 +108,12 @@ services:
       redis: {condition: service_healthy}
       minio: {condition: service_healthy}
     command: sh -c "cd /app/src/scheduler && python main.py"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from scheduler.cron_jobs import CronJobScheduler; print('Scheduler is running')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks: [community-ai-network]
 
   # Nginx Reverse Proxy
