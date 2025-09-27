@@ -1,5 +1,4 @@
--- Enable pgvector extension (temporarily disabled for ARM64 compatibility)
--- CREATE EXTENSION IF NOT EXISTS vector;
+-- Using TEXT for embedding storage instead of pgvector for better compatibility
 
 -- Create community_data table
 CREATE TABLE IF NOT EXISTS community_data (
@@ -10,7 +9,7 @@ CREATE TABLE IF NOT EXISTS community_data (
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     source_url TEXT,
     metadata JSONB,  -- Additional metadata
-    embedding TEXT,  -- Vector embedding for similarity search (temporarily as TEXT for ARM64 compatibility)
+    embedding TEXT,  -- Vector embedding stored as JSON text for compatibility
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -19,7 +18,7 @@ CREATE TABLE IF NOT EXISTS community_data (
 CREATE INDEX IF NOT EXISTS idx_community_data_platform ON community_data(platform);
 CREATE INDEX IF NOT EXISTS idx_community_data_timestamp ON community_data(timestamp);
 CREATE INDEX IF NOT EXISTS idx_community_data_author ON community_data(author_anon);
--- CREATE INDEX IF NOT EXISTS idx_community_data_embedding ON community_data USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+-- Embedding index removed as we use FAISS for vector similarity search
 
 -- Create opt-out table for users who want to exclude their data
 CREATE TABLE IF NOT EXISTS opt_out_users (

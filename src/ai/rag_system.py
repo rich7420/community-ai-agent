@@ -7,7 +7,6 @@ import numpy as np
 from langchain.vectorstores import VectorStore
 from langchain.embeddings.base import Embeddings
 from langchain.schema import Document
-from langchain_community.vectorstores import PGVector
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker

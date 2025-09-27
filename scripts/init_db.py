@@ -105,14 +105,8 @@ def verify_tables():
                 print(f"❌ 表 {table} 不存在")
                 return False
         
-        # 檢查pgvector擴展
-        cur.execute("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')")
-        vector_exists = cur.fetchone()[0]
-        if vector_exists:
-            print("✅ pgvector擴展已安裝")
-        else:
-            print("❌ pgvector擴展未安裝")
-            return False
+        # pgvector擴展檢查已移除，現在使用TEXT存儲embedding
+        print("ℹ️ 使用TEXT存儲embedding，無需pgvector擴展")
         
         cur.close()
         conn.close()
