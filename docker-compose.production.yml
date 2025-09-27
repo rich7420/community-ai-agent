@@ -113,6 +113,7 @@ services:
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -120,7 +121,9 @@ services:
       - ./docker/nginx/nginx.production.conf:/etc/nginx/nginx.conf:ro
       - ./logs/nginx:/var/log/nginx
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on: [app, frontend]
+    depends_on:
+      - app
+      - frontend
     networks: [community-ai-network]
 
 volumes:
