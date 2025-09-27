@@ -68,7 +68,7 @@ downloads/
 eggs/
 .eggs/
 lib/
-!frontend-react/src/lib/
+/!frontend-react/src/lib/
 lib64/
 parts/
 sdist/
@@ -159,8 +159,8 @@ docker-volumes/
 # Deployment scripts with sensitive info
 deploy.sh
 deploy-debian.sh
-!deploy.sh.example
-!deploy-debian.sh.example
+/!deploy.sh.example
+/!deploy-debian.sh.example
 
 # Test files that might contain sensitive data
 tests/test_*_with_secrets.py
@@ -307,10 +307,10 @@ build/
 
 # VS Code
 .vscode/
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+/!.vscode/settings.json
+/!.vscode/tasks.json
+/!.vscode/launch.json
+/!.vscode/extensions.json
 *.code-workspace
 
 # Local History for Visual Studio Code
@@ -329,9 +329,9 @@ build/
 # *.tiff
 
 # Keep example files
-!**/env.example
-!**/README.md
-!**/requirements.txt
-!**/package.json
-!**/docker-compose.yml
-!**/Dockerfile
+/!**/env.example
+/!**/README.md
+/!**/requirements.txt
+/!**/package.json
+/!**/docker-compose.yml
+/!**/Dockerfile
