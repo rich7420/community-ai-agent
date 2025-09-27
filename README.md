@@ -17,6 +17,8 @@
 - **數據源**：Slack API + GitHub API
 - **部署**：Docker Compose + Nginx
 
+# TRY: https://opensource4you.917420.xyz/
+
 ## Quick Start
 
 ### 1. Clone the Project
