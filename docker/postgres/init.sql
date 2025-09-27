@@ -70,7 +70,8 @@ CREATE TRIGGER update_community_data_updated_at
 
 -- Create partitioned table for better performance
 CREATE TABLE IF NOT EXISTS community_data_partitioned (
-    LIKE community_data INCLUDING ALL
+    LIKE community_data INCLUDING ALL,
+    PRIMARY KEY (id, timestamp)
 ) PARTITION BY RANGE (timestamp);
 
 -- Create monthly partitions for the current year and next year
