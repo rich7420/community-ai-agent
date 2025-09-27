@@ -68,6 +68,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend-react/src/lib/
 lib64/
 parts/
 sdist/
@@ -303,8 +304,6 @@ local.properties
 /nbdist/
 /.nb-gradle/
 build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
 # VS Code
 .vscode/
