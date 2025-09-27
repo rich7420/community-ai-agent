@@ -122,7 +122,8 @@ class CronJobScheduler:
             # 收集Slack資料
             if self.slack_collector:
                 try:
-                    slack_messages = self.slack_collector.collect_all_channels(days_back=1)
+                    # 使用新的 collect_bot_channels 方法收集 Bot 所在的所有頻道
+                    slack_messages = self.slack_collector.collect_bot_channels(days_back=1)
                     slack_records = self.data_merger.merge_slack_data(slack_messages)
                     all_data.extend(slack_records)
                     self.logger.info(f"Slack資料收集完成，共 {len(slack_records)} 條記錄")
@@ -147,7 +148,16 @@ class CronJobScheduler:
             # 生成嵌入和存儲
             if all_data:
                 try:
-                    records_with_embeddings = self.embedding_generator.generate_embeddings_for_records(all_data)
+                    # 生成嵌入
+                    texts = [record.content for record in all_data]
+                    embeddings = self.embedding_generator.generate_embeddings_batch(texts)
+                    
+                    # 將嵌入添加到記錄中
+                    records_with_embeddings = []
+                    for i, record in enumerate(all_data):
+                        if embeddings[i] is not None:
+                            record.embedding = embeddings[i]
+                        records_with_embeddings.append(record)
                     
                     # 存儲到PostgreSQL
                     if self.postgres_storage:

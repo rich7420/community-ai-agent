@@ -106,7 +106,7 @@ class SlackCollector:
 
     def collect_channel_messages(self, channel_id: str, days_back: int = 7) -> List[SlackMessage]:
         """
-        收集指定頻道的訊息
+        收集指定頻道的訊息（包含主訊息和回覆）
         
         Args:
             channel_id: 頻道ID
@@ -124,6 +124,9 @@ class SlackCollector:
                 self.logger.warning(f"無法訪問頻道 {channel_id}，跳過收集")
                 return messages
             
+            # 獲取頻道資訊
+            channel_info = self._get_channel_info(channel_id)
+            
             # 計算時間範圍
             end_time = datetime.now()
             start_time_dt = end_time - timedelta(days=days_back)
@@ -134,52 +137,8 @@ class SlackCollector:
             
             self.logger.info(f"開始收集頻道 {channel_id} 的訊息，時間範圍: {start_time_dt} 到 {end_time}")
             
-            # 分頁收集訊息
-            cursor = None
-            while True:
-                try:
-                    response = self.bot_client.conversations_history(
-                        channel=channel_id,
-                        oldest=oldest,
-                        latest=latest,
-                        cursor=cursor,
-                        limit=1000
-                    )
-                    
-                    if not response['ok']:
-                        self.logger.error(f"Slack API錯誤: {response['error']}")
-                        break
-                    
-                    # 處理訊息
-                    for msg in response['messages']:
-                        if self._should_collect_message(msg):
-                            slack_msg = self._parse_message(msg, channel_id)
-                            if slack_msg:
-                                messages.append(slack_msg)
-                    
-                    # 檢查是否還有更多頁面
-                    if not response.get('has_more', False):
-                        break
-                    
-                    cursor = response.get('response_metadata', {}).get('next_cursor')
-                    if not cursor:
-                        break
-                    
-                    # 避免API限制
-                    time.sleep(1)
-                    
-                except SlackApiError as e:
-                    if e.response['error'] == 'ratelimited':
-                        wait_time = int(e.response['headers'].get('Retry-After', 1))
-                        self.logger.warning(f"API限制，等待 {wait_time} 秒")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        self.logger.error(f"Slack API錯誤: {e}")
-                        break
-                except Exception as e:
-                    self.logger.error(f"收集訊息時發生錯誤: {e}")
-                    break
+            # 收集主訊息和回覆
+            messages = self._fetch_channel_messages_with_replies(channel_id, oldest, latest, channel_info)
             
             duration = time.time() - start_time
             self.logger.info(f"頻道 {channel_id} 收集完成，共 {len(messages)} 條訊息，耗時 {duration:.2f} 秒")
@@ -198,6 +157,115 @@ class SlackCollector:
         
         return messages
     
+    def _fetch_channel_messages_with_replies(self, channel_id: str, oldest: float, latest: float, channel_info: Dict[str, str]) -> List[SlackMessage]:
+        """收集頻道訊息和回覆"""
+        messages = []
+        
+        # 分頁收集主訊息
+        cursor = None
+        while True:
+            try:
+                response = self.bot_client.conversations_history(
+                    channel=channel_id,
+                    oldest=str(oldest),
+                    latest=str(latest),
+                    cursor=cursor,
+                    limit=1000,
+                    inclusive=True
+                )
+                
+                if not response['ok']:
+                    self.logger.error(f"Slack API錯誤: {response['error']}")
+                    break
+                
+                # 處理主訊息
+                for msg in response['messages']:
+                    if self._should_collect_message(msg):
+                        slack_msg = self._parse_message(msg, channel_id, channel_info)
+                        if slack_msg:
+                            messages.append(slack_msg)
+                        
+                        # 收集回覆
+                        thread_ts = msg.get('thread_ts')
+                        if thread_ts and msg.get('reply_count', 0) > 0:
+                            self.logger.info(f"主訊息 {msg['ts']} 有 {msg.get('reply_count', 0)} 個回覆，開始收集...")
+                            thread_replies = self._collect_thread_replies_enhanced(channel_id, thread_ts, oldest, latest, channel_info)
+                            messages.extend(thread_replies)
+                
+                # 檢查是否還有更多頁面
+                if not response.get('has_more', False):
+                    break
+                
+                cursor = response.get('response_metadata', {}).get('next_cursor')
+                if not cursor:
+                    break
+                
+                # 避免API限制
+                time.sleep(1)
+                
+            except SlackApiError as e:
+                if e.response['error'] == 'ratelimited':
+                    wait_time = int(e.response['headers'].get('Retry-After', 1))
+                    self.logger.warning(f"API限制，等待 {wait_time} 秒")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    self.logger.error(f"Slack API錯誤: {e}")
+                    break
+            except Exception as e:
+                self.logger.error(f"收集訊息時發生錯誤: {e}")
+                break
+        
+        return messages
+    
+    def _collect_thread_replies_enhanced(self, channel_id: str, thread_ts: str, oldest: float, latest: float, channel_info: Dict[str, str]) -> List[SlackMessage]:
+        """收集線程回覆（增強版）"""
+        replies = []
+        
+        try:
+            self.logger.info(f"開始收集線程 {thread_ts} 的回覆")
+            cursor = None
+            
+            while True:
+                response = self.bot_client.conversations_replies(
+                    channel=channel_id,
+                    ts=thread_ts,
+                    oldest=str(oldest),
+                    latest=str(latest),
+                    cursor=cursor,
+                    limit=1000,
+                    inclusive=True
+                )
+                
+                if not response['ok']:
+                    self.logger.error(f"收集回覆失敗: {response['error']}")
+                    break
+                
+                # 跳過第一個訊息（主訊息），只收集回覆
+                for reply_msg in response['messages'][1:]:
+                    if self._should_collect_message(reply_msg):
+                        slack_msg = self._parse_message(reply_msg, channel_id, channel_info)
+                        if slack_msg:
+                            replies.append(slack_msg)
+                
+                # 檢查是否還有更多頁面
+                if not response.get('has_more', False):
+                    break
+                
+                cursor = response.get('response_metadata', {}).get('next_cursor')
+                if not cursor:
+                    break
+                
+                # 避免API限制
+                time.sleep(1)
+            
+            self.logger.info(f"線程 {thread_ts} 回覆收集完成，共 {len(replies)} 條回覆")
+                        
+        except Exception as e:
+            self.logger.warning(f"收集線程 {thread_ts} 回覆失敗: {e}")
+        
+        return replies
+    
     def _should_collect_message(self, msg: Dict[str, Any]) -> bool:
         """判斷是否應該收集此訊息"""
         # 過濾掉bot訊息（除非是我們自己的bot）
@@ -214,7 +282,7 @@ class SlackCollector:
         
         return True
     
-    def _parse_message(self, msg: Dict[str, Any], channel_id: str) -> Optional[SlackMessage]:
+    def _parse_message(self, msg: Dict[str, Any], channel_id: str, channel_info: Dict[str, str] = None) -> Optional[SlackMessage]:
         """解析Slack訊息"""
         try:
             # 獲取使用者資訊
@@ -241,12 +309,20 @@ class SlackCollector:
                         if uid:
                             user_info = self._get_user_info(uid)
                             real_name = user_info.get('real_name') or user_info.get('name') or 'Unknown User'
-                            reaction_users.append(real_name)
+                            reaction_users.append({
+                                'user_id': uid,
+                                'user_name': real_name,
+                                'display_name': user_info.get('display_name', real_name)
+                            })
                         else:
-                            reaction_users.append('Unknown User')
+                            reaction_users.append({
+                                'user_id': uid,
+                                'user_name': 'Unknown User',
+                                'display_name': 'Unknown User'
+                            })
                     
                     reactions.append({
-                        'name': reaction['name'],
+                        'emoji': reaction['name'],
                         'count': reaction['count'],
                         'users': reaction_users
                     })
@@ -307,12 +383,22 @@ class SlackCollector:
                     'original_user': user_id,
                     'real_name': real_name,  # 添加真實使用者名稱
                     'user_info': user_info,  # 保留完整使用者資訊
+                    'channel': channel_id,  # 頻道ID
+                    'channel_name': channel_info.get('name', 'unknown') if channel_info else 'unknown',  # 頻道名稱
+                    'channel_info': channel_info,  # 完整頻道資訊
                     'subtype': msg.get('subtype'),
                     'has_thread': bool(msg.get('thread_ts')),
                     'reply_count': msg.get('reply_count', 0),
                     'reply_users_count': msg.get('reply_users_count', 0),
                     'is_edited': bool(msg.get('edited')),
-                    'edit_count': msg.get('edit_count', 0)
+                    'edit_count': msg.get('edit_count', 0),
+                    'reactions': reactions,  # 完整的反應資訊
+                    'attachments': attachments,  # 附件資訊
+                    'files': files,  # 文件資訊
+                    'thread_ts': msg.get('thread_ts'),  # 線程時間戳
+                    'parent_user_id': msg.get('parent_user_id'),  # 父訊息用戶ID
+                    'is_thread_reply': bool(msg.get('thread_ts') and msg.get('thread_ts') != msg.get('ts')),  # 是否為線程回覆
+                    'message_type': 'thread_reply' if (msg.get('thread_ts') and msg.get('thread_ts') != msg.get('ts')) else 'main_message'  # 訊息類型
                 }
             )
             
@@ -358,6 +444,30 @@ class SlackCollector:
             self.logger.error(f"建立使用者快取失敗: {e}")
             self.user_cache = {}
     
+    def _get_channel_info(self, channel_id: str) -> Dict[str, str]:
+        """獲取頻道資訊"""
+        try:
+            response = self.bot_client.conversations_info(channel=channel_id)
+            if response['ok']:
+                channel = response['channel']
+                return {
+                    'id': channel.get('id', channel_id),
+                    'name': channel.get('name', 'unknown'),
+                    'is_private': channel.get('is_private', False),
+                    'is_archived': channel.get('is_archived', False),
+                    'num_members': channel.get('num_members', 0)
+                }
+        except Exception as e:
+            self.logger.warning(f"獲取頻道 {channel_id} 資訊失敗: {e}")
+        
+        return {
+            'id': channel_id,
+            'name': 'unknown',
+            'is_private': False,
+            'is_archived': False,
+            'num_members': 0
+        }
+
     def _get_user_info(self, user_id: str) -> Dict[str, str]:
         """從快取獲取使用者資訊"""
         if user_id in self.user_cache:
@@ -466,17 +576,140 @@ class SlackCollector:
                 self.stats['channels_processed'] += 1
                 self.stats['messages_collected'] += len(messages)
                 
+                # 避免API限制 - 增加等待時間
+                time.sleep(3)
+                
+            except Exception as e:
+                self.logger.error(f"收集頻道 {channel_name} 失敗: {e}")
+                self.stats['errors'] += 1
+                # 錯誤後等待更長時間
+                time.sleep(5)
+        
+        self.stats['end_time'] = datetime.now()
+        self.logger.info(f"所有頻道收集完成，共 {len(all_messages)} 條訊息")
+        
+        return all_messages
+    
+    def collect_bot_channels(self, days_back: int = 90) -> List[SlackMessage]:
+        """
+        收集 Bot 所在的所有頻道訊息（90天）
+        
+        Args:
+            days_back: 回溯天數，預設90天
+            
+        Returns:
+            訊息列表
+        """
+        all_messages = []
+        self.stats['start_time'] = datetime.now()
+        
+        self.logger.info(f"開始收集 Bot 所在頻道訊息，回溯 {days_back} 天")
+        
+        # 獲取 Bot 所在的所有頻道
+        bot_channels = self._get_bot_channels()
+        
+        for channel_info in bot_channels:
+            channel_id = channel_info['id']
+            channel_name = channel_info['name']
+            
+            try:
+                self.logger.info(f"收集頻道 {channel_name} ({channel_id})")
+                messages = self.collect_channel_messages(channel_id, days_back)
+                all_messages.extend(messages)
+                self.stats['channels_processed'] += 1
+                self.stats['messages_collected'] += len(messages)
+                
                 # 避免API限制
                 time.sleep(2)
                 
             except Exception as e:
                 self.logger.error(f"收集頻道 {channel_name} 失敗: {e}")
                 self.stats['errors'] += 1
+                time.sleep(3)
         
         self.stats['end_time'] = datetime.now()
-        self.logger.info(f"所有頻道收集完成，共 {len(all_messages)} 條訊息")
+        self.logger.info(f"Bot 頻道收集完成，共 {len(all_messages)} 條訊息")
         
         return all_messages
+    
+    def _get_bot_channels(self) -> List[Dict[str, Any]]:
+        """獲取 Bot 所在的所有頻道"""
+        channels = []
+        
+        try:
+            # 獲取 Bot 用戶 ID
+            auth_response = self.bot_client.auth_test()
+            bot_user_id = auth_response['user_id']
+            
+            # 獲取所有頻道類型
+            channel_types = ['public_channel', 'private_channel']
+            
+            for channel_type in channel_types:
+                try:
+                    # 分頁獲取頻道列表
+                    cursor = None
+                    while True:
+                        response = self.bot_client.conversations_list(
+                            types=channel_type,
+                            limit=1000,
+                            cursor=cursor,
+                            exclude_archived=True
+                        )
+                        
+                        if not response['ok']:
+                            self.logger.error(f"獲取 {channel_type} 頻道失敗: {response['error']}")
+                            break
+                        
+                        # 檢查 Bot 是否在頻道中
+                        for channel in response['channels']:
+                            channel_id = channel['id']
+                            
+                            # 檢查 Bot 是否在頻道中
+                            if self._is_bot_in_channel(channel_id, bot_user_id):
+                                channels.append({
+                                    'id': channel_id,
+                                    'name': channel.get('name', 'unknown'),
+                                    'is_private': channel.get('is_private', False),
+                                    'num_members': channel.get('num_members', 0)
+                                })
+                        
+                        # 檢查是否還有更多頁面
+                        cursor = response.get('response_metadata', {}).get('next_cursor')
+                        if not cursor:
+                            break
+                        
+                        time.sleep(1)  # 避免API限制
+                        
+                except Exception as e:
+                    self.logger.warning(f"獲取 {channel_type} 頻道時發生錯誤: {e}")
+                    continue
+            
+            self.logger.info(f"找到 {len(channels)} 個 Bot 所在的頻道")
+            
+        except Exception as e:
+            self.logger.error(f"獲取 Bot 頻道失敗: {e}")
+        
+        return channels
+    
+    def _is_bot_in_channel(self, channel_id: str, bot_user_id: str) -> bool:
+        """檢查 Bot 是否在頻道中"""
+        try:
+            # 對於小頻道，使用 conversations.members
+            response = self.bot_client.conversations_members(
+                channel=channel_id,
+                limit=1000
+            )
+            
+            if response['ok']:
+                return bot_user_id in response.get('members', [])
+            else:
+                # 如果無法獲取成員列表，嘗試加入頻道來測試
+                join_response = self.bot_client.conversations_join(channel=channel_id)
+                return join_response['ok']
+                
+        except Exception as e:
+            self.logger.debug(f"檢查頻道 {channel_id} 成員失敗: {e}")
+            return False
     
     def collect_thread_replies(self, channel_id: str, thread_ts: str) -> List[SlackMessage]:
         """收集thread回覆"""
