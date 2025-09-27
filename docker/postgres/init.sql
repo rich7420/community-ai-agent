@@ -3,7 +3,7 @@
 
 -- Create community_data table
 CREATE TABLE IF NOT EXISTS community_data (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,  -- Changed from SERIAL to TEXT to support string IDs
     platform TEXT NOT NULL,  -- 'slack', 'github', 'facebook'
     content TEXT NOT NULL,
     author_anon TEXT,  -- Anonymized author identifier
