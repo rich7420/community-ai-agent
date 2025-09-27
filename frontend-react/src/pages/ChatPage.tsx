@@ -11,7 +11,7 @@ const ChatPage: React.FC = () => {
     <div className="flex h-full bg-gray-50 dark:bg-gray-900">
       <Sidebar />
       
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col min-w-0">
         <div className="flex-1 flex flex-col overflow-hidden">
           <MessageList 
             messages={messages} 
@@ -19,7 +19,7 @@ const ChatPage: React.FC = () => {
           />
           
           {error && (
-            <div className="mx-4 mb-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900 dark:text-red-300">
+            <div className="mx-2 sm:mx-4 mb-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900 dark:text-red-300">
               {error}
             </div>
           )}

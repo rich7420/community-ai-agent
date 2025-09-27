@@ -256,12 +256,10 @@ class CommunityQASystem:
             message_count = user['message_count']
             reply_count = user['reply_count']
             emoji_given = user['emoji_given']
-            total_score = user['total_score']
             
             answer_parts.append(
                 f"{i}. **{user_name}** - 發送{message_count}條訊息，"
-                f"回覆{reply_count}次，給出{emoji_given}個emoji "
-                f"(總分: {total_score})"
+                f"回覆{reply_count}次，給出{emoji_given}個emoji"
             )
         
         # 添加總體統計

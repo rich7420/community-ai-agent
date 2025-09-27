@@ -43,8 +43,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   }, [message])
 
   return (
-    <div className="border-t border-coffee-200 bg-white p-4 dark:border-coffee-700 dark:bg-gray-800">
-      <form onSubmit={handleSubmit} className="flex items-end space-x-3">
+    <div className="border-t border-coffee-200 bg-white p-2 sm:p-4 dark:border-coffee-700 dark:bg-gray-800">
+      <form onSubmit={handleSubmit} className="flex items-end space-x-2 sm:space-x-3">
         <div className="flex-1">
           <textarea
             ref={textareaRef}
@@ -54,8 +54,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
             placeholder={placeholder}
             disabled={disabled || isLoading}
             className={cn(
-              'w-full resize-none rounded-lg border-2 border-coffee-200 px-3 py-2 text-base placeholder-gray-400 transition-colors focus:border-coffee-500 focus:outline-none focus:ring-2 focus:ring-coffee-500 focus:ring-offset-2 disabled:bg-gray-50 disabled:text-gray-500 dark:border-coffee-700 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-coffee-400',
-              'min-h-[44px] max-h-32'
+              'w-full resize-none rounded-lg border-2 border-coffee-200 px-2 sm:px-3 py-2 text-sm sm:text-base placeholder-gray-400 transition-colors focus:border-coffee-500 focus:outline-none focus:ring-2 focus:ring-coffee-500 focus:ring-offset-2 disabled:bg-gray-50 disabled:text-gray-500 dark:border-coffee-700 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-coffee-400',
+              'min-h-[40px] sm:min-h-[44px] max-h-32'
             )}
             rows={1}
           />
@@ -65,17 +65,17 @@ const ChatInput: React.FC<ChatInputProps> = ({
           size="md"
           loading={isLoading}
           disabled={!message.trim() || disabled}
-          className="flex-shrink-0"
+          className="flex-shrink-0 h-10 w-10 sm:h-11 sm:w-11 p-0"
         >
           {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
           ) : (
-            <Send className="h-4 w-4" />
+            <Send className="h-3 w-3 sm:h-4 sm:w-4" />
           )}
         </Button>
       </form>
       
-      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+      <div className="mt-1 sm:mt-2 text-xs text-gray-500 dark:text-gray-400 text-center sm:text-left">
         按 Enter 發送，Shift + Enter 換行
       </div>
     </div>

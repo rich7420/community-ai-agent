@@ -5,7 +5,7 @@ import { ChatPage } from '@/pages/ChatPage'
 import { useAppStore } from '@/store/appStore'
 
 function App() {
-  const { theme } = useAppStore()
+  const { theme, toggleSidebar } = useAppStore()
 
   // Apply theme to document
   useEffect(() => {
@@ -16,7 +16,7 @@ function App() {
   return (
     <Router>
       <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900">
-        <Header />
+        <Header onMenuClick={toggleSidebar} />
         <div className="flex-1 overflow-hidden">
           <Routes>
             <Route path="/" element={<ChatPage />} />

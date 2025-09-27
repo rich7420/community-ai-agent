@@ -17,19 +17,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
   const isError = message.status === 'error'
 
   return (
-    <div className={cn('flex gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
+    <div className={cn('flex gap-2 sm:gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
       {showAvatar && (
-        <div className={cn('flex-shrink-0', isUser ? 'ml-3' : 'mr-3')}>
+        <div className={cn('flex-shrink-0', isUser ? 'ml-2 sm:ml-3' : 'mr-2 sm:mr-3')}>
           <div
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full overflow-hidden',
+              'flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full overflow-hidden',
               isUser
                 ? 'bg-coffee-500 text-white'
                 : ''
             )}
           >
             {isUser ? (
-              <User size={16} />
+              <User size={12} className="sm:w-4 sm:h-4" />
             ) : (
               <img 
                 src={apacheBadge} 
@@ -41,10 +41,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
         </div>
       )}
 
-      <div className={cn('flex max-w-[80%] flex-col', isUser ? 'items-end' : 'items-start')}>
+      <div className={cn('flex max-w-[85%] sm:max-w-[80%] flex-col', isUser ? 'items-end' : 'items-start')}>
         <div
           className={cn(
-            'rounded-2xl px-4 py-2 shadow-sm',
+            'rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 shadow-sm',
             isUser
               ? 'bg-coffee-500 text-white'
               : 'bg-white text-gray-900 dark:bg-gray-700 dark:text-white',
@@ -55,14 +55,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
           {message.status === 'sending' ? (
             <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400">
               <div className="flex items-center space-x-1">
-                <div className="h-2 w-2 animate-bounce rounded-full bg-coffee-500"></div>
-                <div className="h-2 w-2 animate-bounce rounded-full bg-coffee-500 animation-delay-200"></div>
-                <div className="h-2 w-2 animate-bounce rounded-full bg-coffee-500 animation-delay-400"></div>
+                <div className="h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce rounded-full bg-coffee-500"></div>
+                <div className="h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce rounded-full bg-coffee-500 animation-delay-200"></div>
+                <div className="h-1.5 w-1.5 sm:h-2 sm:w-2 animate-bounce rounded-full bg-coffee-500 animation-delay-400"></div>
               </div>
-              <span className="text-sm">小饅頭正在思考中...</span>
+              <span className="text-xs sm:text-sm">小饅頭正在思考中...</span>
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="prose prose-xs sm:prose-sm max-w-none dark:prose-invert">
               <ReactMarkdown
                 components={{
                   code({ className, children }) {
@@ -90,9 +90,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
         </div>
 
         <div className="mt-1 flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
-          <span>{formatTime(message.timestamp)}</span>
+          <span className="text-xs">{formatTime(message.timestamp)}</span>
           {message.status === 'error' && (
-            <span className="text-red-500">發送失敗</span>
+            <span className="text-red-500 text-xs">發送失敗</span>
           )}
         </div>
 
