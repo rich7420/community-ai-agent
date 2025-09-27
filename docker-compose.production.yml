@@ -56,9 +56,23 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: community-ai-app
+    ports:
+      - "8000:8000"
     env_file: [.env]
     environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=community_ai
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/community_ai
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
     volumes:
       - ./src:/app/src
       - ./config:/app/config
@@ -67,6 +81,13 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       minio: {condition: service_healthy}
+    command: >
+      sh -c "
+        echo '🚀 開始初始化資料收集...' &&
+        python scripts/init_data_collection.py || echo '⚠️ 初始化失敗，但繼續啟動服務...' &&
+        echo '✅ 啟動 API 服務...' &&
+        python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      "
     networks: [community-ai-network]
 
   # Frontend React App
