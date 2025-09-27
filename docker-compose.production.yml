@@ -17,23 +17,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - community-ai-network
+    networks: [community-ai-network]
 
   # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: community-ai-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "--raw", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - community-ai-network
+    networks: [community-ai-network]
 
   # MinIO Object Storage
   minio:
@@ -48,49 +46,28 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
-      timeout: 20s
+      timeout: 10s
       retries: 3
-    networks:
-      - community-ai-network
+    networks: [community-ai-network]
 
-  # Main Application
+  # Main Application (FastAPI / Uvicorn)
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: community-ai-app
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=community_ai
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/community_ai
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=0
-      - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - DOMAIN=${DOMAIN}
-      - FRONTEND_URL=${FRONTEND_URL}
-      - API_URL=${API_URL}
     volumes:
       - ./src:/app/src
       - ./config:/app/config
       - ./logs:/app/logs
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    networks:
-      - community-ai-network
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    networks: [community-ai-network]
 
   # Frontend React App
   frontend:
@@ -101,50 +78,22 @@ services:
     environment:
       - VITE_API_URL=${API_URL}
       - VITE_FRONTEND_URL=${FRONTEND_URL}
-    volumes:
-      - ./frontend-react/src:/app/src
-      - ./frontend-react/public:/app/public
-    depends_on:
-      - app
-    networks:
-      - community-ai-network
+    depends_on: [app]
+    networks: [community-ai-network]
 
-  # Scheduler (for cron jobs)
+  # Scheduler (cron jobs)
   scheduler:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: community-ai-scheduler
-    env_file:
-      - .env
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=community_ai
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/community_ai
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=0
-      - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-    volumes:
-      - ./src:/app/src
-      - ./config:/app/config
-      - ./logs:/app/logs
+    env_file: [.env]
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
     command: sh -c "cd /app/src/scheduler && python main.py"
-    networks:
-      - community-ai-network
+    networks: [community-ai-network]
 
   # Nginx Reverse Proxy
   nginx:
@@ -154,16 +103,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./docker/nginx/nginx.production.conf:/etc/nginx/nginx.conf
-      - ./docker/nginx/ssl:/etc/ssl/certs
+      - ./docker/nginx/nginx.production.conf:/etc/nginx/nginx.conf:ro
       - ./logs/nginx:/var/log/nginx
-      # Mount Let's Encrypt certificates if they exist
-      - /etc/letsencrypt/live/opensource4you.917420.xyz:/etc/letsencrypt/live/opensource4you.917420.xyz:ro
-    depends_on:
-      - app
-      - frontend
-    networks:
-      - community-ai-network
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on: [app, frontend]
+    networks: [community-ai-network]
 
 volumes:
   postgres_data:

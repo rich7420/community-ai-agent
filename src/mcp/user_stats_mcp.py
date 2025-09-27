@@ -205,17 +205,38 @@ class UserStatsMCP:
             
             start_date = datetime.now() - timedelta(days=days_back)
             
-            # 總體統計
-            summary_query = """
+            # 總體統計 - 分開查詢避免子查詢問題
+            # 1. 用戶和訊息統計
+            user_message_query = """
             SELECT 
                 COUNT(DISTINCT author_anon) as total_users,
-                COUNT(*) as total_messages,
-                COUNT(DISTINCT metadata->>'channel') as total_channels,
-                AVG(message_count) as avg_messages_per_user
+                COUNT(*) as total_messages
+            FROM community_data 
+            WHERE platform = %s 
+                AND timestamp >= %s
+                AND author_anon IS NOT NULL
+            """
+            
+            cur.execute(user_message_query, (platform, start_date))
+            user_message_result = cur.fetchone()
+            
+            # 2. 頻道統計
+            channel_query = """
+            SELECT COUNT(DISTINCT metadata->>'channel') as total_channels
+            FROM community_data 
+            WHERE platform = %s 
+                AND timestamp >= %s
+                AND metadata->>'channel' IS NOT NULL
+            """
+            
+            cur.execute(channel_query, (platform, start_date))
+            channel_result = cur.fetchone()
+            
+            # 3. 平均訊息數
+            avg_query = """
+            SELECT ROUND(AVG(message_count), 2) as avg_messages_per_user
             FROM (
-                SELECT 
-                    author_anon,
-                    COUNT(*) as message_count
+                SELECT COUNT(*) as message_count
                 FROM community_data 
                 WHERE platform = %s 
                     AND timestamp >= %s
@@ -224,31 +245,26 @@ class UserStatsMCP:
             ) user_counts
             """
             
-            cur.execute(summary_query, (platform, start_date))
-            summary_result = cur.fetchone()
+            cur.execute(avg_query, (platform, start_date))
+            avg_result = cur.fetchone()
+            
+            # 合併結果
+            total_users = user_message_result[0] if user_message_result else 0
+            total_messages = user_message_result[1] if user_message_result else 0
+            total_channels = channel_result[0] if channel_result else 0
+            avg_messages = avg_result[0] if avg_result else 0
             
             cur.close()
             return_db_connection(conn)
             
-            if summary_result:
-                total_users, total_messages, total_channels, avg_messages = summary_result
-                return {
-                    'total_users': total_users or 0,
-                    'total_messages': total_messages or 0,
-                    'total_channels': total_channels or 0,
-                    'avg_messages_per_user': round(avg_messages or 0, 2),
-                    'period_days': days_back,
-                    'platform': platform
-                }
-            else:
-                return {
-                    'total_users': 0,
-                    'total_messages': 0,
-                    'total_channels': 0,
-                    'avg_messages_per_user': 0,
-                    'period_days': days_back,
-                    'platform': platform
-                }
+            return {
+                'total_users': total_users,
+                'total_messages': total_messages,
+                'total_channels': total_channels,
+                'avg_messages_per_user': avg_messages,
+                'period_days': days_back,
+                'platform': platform
+            }
                 
         except Exception as e:
             self.logger.error(f"獲取活動摘要失敗: {e}")
