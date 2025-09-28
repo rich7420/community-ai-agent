@@ -8,7 +8,7 @@ docker stop community-ai-app-prod 2>/dev/null || true
 
 # 重新啟動主應用容器（會觸發初始數據收集）
 echo "重新啟動主應用容器..."
-docker-compose -f docker compose.production.yml up -d app
+docker compose -f docker-compose.production.yml up -d app
 
 # 等待服務啟動
 echo "等待服務啟動..."
