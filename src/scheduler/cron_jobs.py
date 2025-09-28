@@ -19,7 +19,7 @@ from utils.logging_config import structured_logger
 from collectors.slack_collector import SlackCollector
 from collectors.github_collector import GitHubCollector
 from collectors.google_calendar_collector import GoogleCalendarCollector
-from collectors.incremental_collector import IncrementalCollector
+# from collectors.incremental_collector import IncrementalCollector  # 暫時註解，該模組不存在
 from collectors.data_merger import DataMerger
 from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
 from storage.postgres_storage import PostgreSQLStorage
@@ -35,7 +35,7 @@ class CronJobScheduler:
         self.slack_collector = None
         self.github_collector = None
         self.calendar_collector = None
-        self.incremental_collector = IncrementalCollector()
+        # self.incremental_collector = IncrementalCollector()  # 暫時註解，該模組不存在
         self.data_merger = DataMerger()
         self.embedding_generator = GeminiEmbeddingGenerator()
         self.postgres_storage = None
