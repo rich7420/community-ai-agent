@@ -30,6 +30,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // 檢查是否在輸入法組合狀態中（IME composition）
+    // 只有在非組合狀態且按 Enter 鍵時才提交
     if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
       e.preventDefault()
       handleSubmit(e)
@@ -40,8 +41,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
     setIsComposing(true)
   }
 
-  const handleCompositionEnd = () => {
+  const handleCompositionEnd = (e: React.CompositionEvent) => {
     setIsComposing(false)
+    // 在組合結束後，如果按的是 Enter 鍵，則提交表單
+    if (e.data && e.data.includes('\n')) {
+      // 延遲一點時間確保狀態更新完成
+      setTimeout(() => {
+        if (message.trim() && !isLoading && !disabled) {
+          onSendMessage(message.trim())
+          setMessage('')
+        }
+      }, 10)
+    }
   }
 
   // Auto-resize textarea

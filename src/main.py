@@ -96,15 +96,51 @@ def get_qa_system() -> CommunityQASystem:
     
     return qa_system
 
+async def check_if_initial_collection_needed() -> bool:
+    """檢查是否需要進行初始數據收集"""
+    try:
+        from src.storage.connection_pool import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 檢查是否已有數據
+        cur.execute("SELECT COUNT(*) as count FROM community_data")
+        result = cur.fetchone()
+        data_count = result['count'] if result else 0
+        
+        # 檢查是否有初始化標記
+        cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
+        result = cur.fetchone()
+        flag_count = result['count'] if result else 0
+        
+        cur.close()
+        return_db_connection(conn)
+        
+        # 如果沒有數據且沒有初始化標記，則需要收集
+        return data_count == 0 and flag_count == 0
+        
+    except Exception as e:
+        logger.error(f"檢查初始收集狀態失敗: {e}")
+        # 如果檢查失敗，為了安全起見，不進行收集
+        return False
+
 @app.on_event("startup")
 async def startup_event():
     """應用程序啟動時的事件處理"""
     logger.info("應用程序啟動中...")
     
-    # 啟動後台數據收集任務
-    import asyncio
-    asyncio.create_task(background_data_collection())
-    logger.info("後台數據收集任務已啟動")
+    # 檢查是否需要進行初始數據收集
+    should_collect = await check_if_initial_collection_needed()
+    
+    if should_collect:
+        # 啟動後台數據收集任務
+        import asyncio
+        asyncio.create_task(background_data_collection())
+        logger.info("後台數據收集任務已啟動")
+    else:
+        logger.info("跳過初始數據收集，系統已初始化")
 
 async def background_data_collection():
     """後台數據收集任務"""
@@ -137,13 +173,8 @@ async def initial_data_collection():
         cur.close()
         return_db_connection(conn)
         
-        # 檢查是否已有用戶映射數據，如果有就跳過初始收集
-        if user_mapping_count > 0:
-            logger.info(f"用戶映射已存在 ({user_mapping_count} 條記錄)，跳過初始收集")
-            return
-        
-        logger.info("開始初始數據收集以建立用戶映射...")
-        
+        # 強制重新收集數據，不管是否已有用戶映射
+        logger.info(f"檢測到用戶映射記錄 {user_mapping_count} 條，但將強制重新收集數據")
         logger.info("開始初始數據收集以建立用戶映射...")
         
         # 初始化收集器
@@ -321,8 +352,47 @@ async def initial_data_collection():
         
         logger.info("初始數據收集完成")
         
+        # 設置初始化完成標記
+        await set_initial_collection_completed()
+        
     except Exception as e:
         logger.error(f"初始數據收集過程中發生錯誤: {e}")
+
+async def set_initial_collection_completed():
+    """設置初始收集完成標記"""
+    try:
+        from src.storage.connection_pool import get_db_connection, return_db_connection
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 創建 system_flags 表（如果不存在）
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS system_flags (
+                id SERIAL PRIMARY KEY,
+                flag_name VARCHAR(255) UNIQUE NOT NULL,
+                flag_value TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # 插入或更新標記
+        cur.execute("""
+            INSERT INTO system_flags (flag_name, flag_value) 
+            VALUES ('initial_collection_completed', 'true')
+            ON CONFLICT (flag_name) 
+            DO UPDATE SET flag_value = 'true', updated_at = CURRENT_TIMESTAMP
+        """)
+        
+        conn.commit()
+        cur.close()
+        return_db_connection(conn)
+        
+        logger.info("初始收集完成標記已設置")
+        
+    except Exception as e:
+        logger.error(f"設置初始收集完成標記失敗: {e}")
 
 @app.get("/")
 async def root():

@@ -62,6 +62,28 @@ class SlackCollector:
             'start_time': None,
             'end_time': None
         }
+        
+        # Rate limiting 控制
+        self.rate_limit_retries = 0
+        self.max_rate_limit_retries = 5
+    
+    def _handle_rate_limit(self, error: Exception) -> bool:
+        """處理 rate limiting 錯誤"""
+        if hasattr(error, 'response') and error.response.get('error') == 'ratelimited':
+            self.rate_limit_retries += 1
+            if self.rate_limit_retries > self.max_rate_limit_retries:
+                self.logger.error(f"達到最大重試次數 ({self.max_rate_limit_retries})，停止重試")
+                return False
+            
+            wait_time = int(error.response.get('headers', {}).get('Retry-After', 15))
+            self.logger.warning(f"API限制，第 {self.rate_limit_retries} 次重試，等待 {wait_time} 秒")
+            time.sleep(wait_time)
+            return True
+        return False
+    
+    def _reset_rate_limit_retries(self):
+        """重置 rate limiting 重試計數"""
+        self.rate_limit_retries = 0
     
     def _load_config(self) -> Dict[str, Any]:
         """載入配置"""
@@ -200,14 +222,11 @@ class SlackCollector:
                 if not cursor:
                     break
                 
-                # 避免API限制
-                time.sleep(5)
+                # 避免API限制 - 增加等待時間
+                time.sleep(10)
                 
             except SlackApiError as e:
-                if e.response['error'] == 'ratelimited':
-                    wait_time = int(e.response['headers'].get('Retry-After', 5))
-                    self.logger.warning(f"API限制，等待 {wait_time} 秒")
-                    time.sleep(wait_time)
+                if self._handle_rate_limit(e):
                     continue
                 else:
                     self.logger.error(f"Slack API錯誤: {e}")
@@ -227,37 +246,54 @@ class SlackCollector:
             cursor = None
             
             while True:
-                response = self.bot_client.conversations_replies(
-                    channel=channel_id,
-                    ts=thread_ts,
-                    oldest=str(oldest),
-                    latest=str(latest),
-                    cursor=cursor,
-                    limit=1000,
-                    inclusive=True
-                )
-                
-                if not response['ok']:
-                    self.logger.error(f"收集回覆失敗: {response['error']}")
+                try:
+                    response = self.bot_client.conversations_replies(
+                        channel=channel_id,
+                        ts=thread_ts,
+                        oldest=str(oldest),
+                        latest=str(latest),
+                        cursor=cursor,
+                        limit=1000,
+                        inclusive=True
+                    )
+                    
+                    if not response['ok']:
+                        if response['error'] == 'ratelimited':
+                            wait_time = int(response.get('headers', {}).get('Retry-After', 10))
+                            self.logger.warning(f"API限制，等待 {wait_time} 秒")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            self.logger.error(f"收集回覆失敗: {response['error']}")
+                            break
+                    
+                    # 跳過第一個訊息（主訊息），只收集回覆
+                    for reply_msg in response['messages'][1:]:
+                        if self._should_collect_message(reply_msg):
+                            slack_msg = self._parse_message(reply_msg, channel_id, channel_info)
+                            if slack_msg:
+                                replies.append(slack_msg)
+                    
+                    # 檢查是否還有更多頁面
+                    if not response.get('has_more', False):
+                        break
+                    
+                    cursor = response.get('response_metadata', {}).get('next_cursor')
+                    if not cursor:
+                        break
+                    
+                    # 避免API限制 - 增加等待時間
+                    time.sleep(10)
+                    
+                except SlackApiError as e:
+                    if self._handle_rate_limit(e):
+                        continue
+                    else:
+                        self.logger.error(f"Slack API錯誤: {e}")
+                        break
+                except Exception as e:
+                    self.logger.error(f"收集回覆時發生錯誤: {e}")
                     break
-                
-                # 跳過第一個訊息（主訊息），只收集回覆
-                for reply_msg in response['messages'][1:]:
-                    if self._should_collect_message(reply_msg):
-                        slack_msg = self._parse_message(reply_msg, channel_id, channel_info)
-                        if slack_msg:
-                            replies.append(slack_msg)
-                
-                # 檢查是否還有更多頁面
-                if not response.get('has_more', False):
-                    break
-                
-                cursor = response.get('response_metadata', {}).get('next_cursor')
-                if not cursor:
-                    break
-                
-                # 避免API限制
-                time.sleep(5)
             
             self.logger.info(f"線程 {thread_ts} 回覆收集完成，共 {len(replies)} 條回覆")
                         
@@ -634,7 +670,7 @@ class SlackCollector:
                 self.logger.error(f"收集頻道 {channel_name} 失敗: {e}")
                 self.stats['errors'] += 1
                 # 錯誤後等待更長時間
-                time.sleep(15)
+                time.sleep(20)
         
         self.stats['end_time'] = datetime.now()
         self.logger.info(f"所有頻道收集完成，共 {len(all_messages)} 條訊息")
@@ -670,8 +706,8 @@ class SlackCollector:
                 self.stats['channels_processed'] += 1
                 self.stats['messages_collected'] += len(messages)
                 
-                # 避免API限制
-                time.sleep(5)
+                # 避免API限制 - 增加等待時間
+                time.sleep(10)
                 
             except Exception as e:
                 self.logger.error(f"收集頻道 {channel_name} 失敗: {e}")
