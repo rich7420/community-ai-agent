@@ -16,7 +16,7 @@ load_dotenv()
 # Import AI components
 from src.ai.qa_system import CommunityQASystem
 from src.ai.rag_system import CommunityRAGSystem
-from src.ai.grok_llm import GrokLLM
+from src.ai.google_llm import GoogleLLM
 from src.api.health_endpoint import router as health_router
 from src.streaming.async_generator import AsyncAnswerGenerator, get_streaming
 from src.cache.answer_cache import get_cache
@@ -80,7 +80,12 @@ def get_qa_system() -> CommunityQASystem:
             )
             
             # Initialize LLM
-            llm = GrokLLM.from_environment()
+            llm = GoogleLLM(
+                google_api_key=os.getenv("GOOGLE_API_KEY"),
+                model_name="gemini-2.5-pro-preview-03-25",
+                temperature=0.7,
+                max_tokens=8192
+            )
             
             # Initialize Q&A system
             qa_system = CommunityQASystem(rag_system=rag_system, llm=llm)

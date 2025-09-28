@@ -3,7 +3,7 @@ Q&A System combining RAG and LLM
 """
 import logging
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from langchain.chains import LLMChain
@@ -11,12 +11,12 @@ from langchain.schema import BaseMessage, HumanMessage, SystemMessage
 from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.base import BaseCallbackHandler
 
-from src.ai.grok_llm import GrokLLM
+from src.ai.google_llm import GoogleLLM
 from src.ai.rag_system import CommunityRAGSystem
 from src.ai.prompts import CommunityPrompts
 from src.utils.logging_config import structured_logger
 from src.mcp.user_stats_mcp import get_slack_user_stats, get_slack_activity_summary
-from src.mcp.calendar_mcp_fixed import CalendarMCPFixed as CalendarMCP
+from src.mcp.calendar_mcp import CalendarMCP
 from src.cache.answer_cache import get_cache
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class CommunityQASystem:
     def __init__(
         self,
         rag_system: CommunityRAGSystem,
-        llm: GrokLLM,
+        llm: GoogleLLM,
         memory_size: int = 10,
         max_context_length: int = 4000
     ):
@@ -468,6 +468,21 @@ class CommunityQASystem:
                 next_week = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=7)
                 week_after = next_week + timedelta(days=7)
                 events = self.calendar_mcp.get_events_by_date_range(next_week, week_after, limit=20)
+            elif any(keyword in question.lower() for keyword in ["11月", "十一月"]):
+                # 11月的事件
+                start_date = datetime(2025, 11, 1).replace(tzinfo=timezone.utc)
+                end_date = datetime(2025, 12, 1).replace(tzinfo=timezone.utc)
+                events = self.calendar_mcp.get_events_by_date_range(start_date, end_date, limit=20)
+            elif any(keyword in question.lower() for keyword in ["10月", "十月"]):
+                # 10月的事件
+                start_date = datetime(2025, 10, 1).replace(tzinfo=timezone.utc)
+                end_date = datetime(2025, 11, 1).replace(tzinfo=timezone.utc)
+                events = self.calendar_mcp.get_events_by_date_range(start_date, end_date, limit=20)
+            elif any(keyword in question.lower() for keyword in ["12月", "十二月"]):
+                # 12月的事件
+                start_date = datetime(2025, 12, 1).replace(tzinfo=timezone.utc)
+                end_date = datetime(2026, 1, 1).replace(tzinfo=timezone.utc)
+                events = self.calendar_mcp.get_events_by_date_range(start_date, end_date, limit=20)
             else:
                 # 默認獲取未來7天的事件
                 events = self.calendar_mcp.get_upcoming_events(days_ahead=7, limit=10)

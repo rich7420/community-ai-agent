@@ -114,6 +114,7 @@ services:
     container_name: community-ai-scheduler-prod
     env_file: [.env]
     environment:
+      - PYTHONPATH=/app/src
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=community_ai
@@ -135,7 +136,7 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       minio: {condition: service_healthy}
-    command: sh -c "cd /app/src/scheduler && python main.py"
+    command: sh -c "cd /app/src/scheduler && PYTHONPATH=/app/src python main.py"
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from scheduler.cron_jobs import CronJobScheduler; print('Scheduler is running')"]
       interval: 30s
