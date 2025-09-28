@@ -30,6 +30,12 @@ class CommunityPrompts:
 - 要展現對社群成員的了解和尊重
 - 社群主要涉及的開源專案有：Apache Kafaka, Apache Ozone, Apache Airflow, Apache Gravitino, Apache YuniKorn, KubeRay, Apache Ambari
 
+用戶名稱顯示規則：
+- 在回答中直接顯示用戶的真實姓名，不要顯示匿名化ID（如user_xxxxxxxx）
+- 如果資料中提到用戶的別名（如偉赳=Jesse=jonas），優先使用最合適的顯示名稱
+- 對於群體稱呼（如大神、大佬），要根據上下文判斷具體指的是哪位成員
+- 確保用戶名稱的顯示既尊重隱私又便於理解
+
 回答風格：
 - 友善親切，像朋友一樣
 - 專業但不會太正式

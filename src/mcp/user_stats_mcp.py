@@ -37,7 +37,7 @@ class UserStatsMCP:
     
     def get_user_stats(self, 
                       platform: str = "slack",
-                      days_back: int = 30,
+                      days_back: int = 90,
                       limit: int = 10) -> List[UserStats]:
         """
         獲取用戶統計數據
@@ -80,14 +80,20 @@ class UserStatsMCP:
             
             user_stats = []
             for row in results:
-                user_name, message_count, reply_count, last_activity, channel_count, channels = row
+                anonymized_id, message_count, reply_count, last_activity, channel_count, channels = row
+                
+                # 嘗試獲取真實用戶名稱
+                from src.utils.pii_filter import PIIFilter
+                pii_filter = PIIFilter()
+                display_name = pii_filter._get_display_name_by_original_id(anonymized_id, platform)
+                user_name = display_name if display_name else anonymized_id
                 
                 # 計算emoji統計
-                emoji_stats = self._get_emoji_stats(cur, user_name, platform, start_date)
+                emoji_stats = self._get_emoji_stats(cur, anonymized_id, platform, start_date)
                 
                 stats = UserStats(
-                    user_id=user_name,  # 使用user_name作為ID
-                    user_name=user_name,
+                    user_id=anonymized_id,  # 使用anonymized_id作為ID
+                    user_name=user_name,    # 使用顯示名稱
                     message_count=message_count or 0,
                     reply_count=reply_count or 0,
                     emoji_given_count=emoji_stats['given'],
@@ -155,7 +161,7 @@ class UserStatsMCP:
     
     def get_top_active_users(self, 
                            platform: str = "slack",
-                           days_back: int = 30,
+                           days_back: int = 90,
                            limit: int = 3) -> List[Dict[str, Any]]:
         """
         獲取最活躍的前N個用戶
@@ -188,7 +194,7 @@ class UserStatsMCP:
     
     def get_user_activity_summary(self, 
                                 platform: str = "slack",
-                                days_back: int = 30) -> Dict[str, Any]:
+                                days_back: int = 90) -> Dict[str, Any]:
         """
         獲取用戶活動摘要
         
@@ -276,14 +282,171 @@ class UserStatsMCP:
                 'period_days': days_back,
                 'platform': platform
             }
+    
+    def get_multi_platform_summary(self, days_back: int = 90) -> Dict[str, Any]:
+        """
+        獲取多平台活動摘要
+        
+        Args:
+            days_back: 回溯天數
+            
+        Returns:
+            多平台活動摘要
+        """
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            start_date = datetime.now() - timedelta(days=days_back)
+            
+            # 查詢各平台統計
+            platform_query = """
+            SELECT 
+                platform,
+                COUNT(DISTINCT author_anon) as total_users,
+                COUNT(*) as total_messages,
+                COUNT(DISTINCT metadata->>'channel') as total_channels
+            FROM community_data 
+            WHERE timestamp >= %s
+                AND author_anon IS NOT NULL
+            GROUP BY platform
+            ORDER BY total_messages DESC
+            """
+            
+            cur.execute(platform_query, (start_date,))
+            platform_results = cur.fetchall()
+            
+            # 查詢總體統計
+            total_query = """
+            SELECT 
+                COUNT(DISTINCT author_anon) as total_users,
+                COUNT(*) as total_messages,
+                COUNT(DISTINCT platform) as total_platforms
+            FROM community_data 
+            WHERE timestamp >= %s
+                AND author_anon IS NOT NULL
+            """
+            
+            cur.execute(total_query, (start_date,))
+            total_result = cur.fetchone()
+            
+            cur.close()
+            return_db_connection(conn)
+            
+            # 構建結果
+            platforms = []
+            for row in platform_results:
+                platform, users, messages, channels = row
+                platforms.append({
+                    'platform': platform,
+                    'total_users': users or 0,
+                    'total_messages': messages or 0,
+                    'total_channels': channels or 0
+                })
+            
+            return {
+                'total_users': total_result[0] if total_result else 0,
+                'total_messages': total_result[1] if total_result else 0,
+                'total_platforms': total_result[2] if total_result else 0,
+                'platforms': platforms,
+                'period_days': days_back
+            }
+                
+        except Exception as e:
+            self.logger.error(f"獲取多平台摘要失敗: {e}")
+            return {
+                'total_users': 0,
+                'total_messages': 0,
+                'total_platforms': 0,
+                'platforms': [],
+                'period_days': days_back
+            }
+    
+    def get_calendar_event_stats(self, days_back: int = 90) -> Dict[str, Any]:
+        """
+        獲取日曆事件統計
+        
+        Args:
+            days_back: 回溯天數
+            
+        Returns:
+            日曆事件統計
+        """
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            start_date = datetime.now() - timedelta(days=days_back)
+            
+            # 查詢日曆事件統計
+            query = """
+            SELECT 
+                COUNT(*) as total_events,
+                COUNT(CASE WHEN start_time >= NOW() THEN 1 END) as upcoming_events,
+                COUNT(CASE WHEN start_time < NOW() THEN 1 END) as past_events,
+                COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed_events,
+                COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_events,
+                COUNT(DISTINCT calendar_id) as total_calendars
+            FROM calendar_events
+            WHERE start_time >= %s
+            """
+            
+            cur.execute(query, (start_date,))
+            result = cur.fetchone()
+            
+            cur.close()
+            return_db_connection(conn)
+            
+            if result:
+                return {
+                    'total_events': result[0] or 0,
+                    'upcoming_events': result[1] or 0,
+                    'past_events': result[2] or 0,
+                    'confirmed_events': result[3] or 0,
+                    'cancelled_events': result[4] or 0,
+                    'total_calendars': result[5] or 0,
+                    'period_days': days_back
+                }
+            else:
+                return {
+                    'total_events': 0,
+                    'upcoming_events': 0,
+                    'past_events': 0,
+                    'confirmed_events': 0,
+                    'cancelled_events': 0,
+                    'total_calendars': 0,
+                    'period_days': days_back
+                }
+                
+        except Exception as e:
+            self.logger.error(f"獲取日曆事件統計失敗: {e}")
+            return {
+                'total_events': 0,
+                'upcoming_events': 0,
+                'past_events': 0,
+                'confirmed_events': 0,
+                'cancelled_events': 0,
+                'total_calendars': 0,
+                'period_days': days_back
+            }
 
 # MCP工具函數
-def get_slack_user_stats(days_back: int = 30, limit: int = 10) -> List[Dict[str, Any]]:
+def get_slack_user_stats(days_back: int = 90, limit: int = 10) -> List[Dict[str, Any]]:
     """獲取Slack用戶統計數據"""
     mcp = UserStatsMCP()
     return mcp.get_top_active_users("slack", days_back, limit)
 
-def get_slack_activity_summary(days_back: int = 30) -> Dict[str, Any]:
+def get_slack_activity_summary(days_back: int = 90) -> Dict[str, Any]:
     """獲取Slack活動摘要"""
     mcp = UserStatsMCP()
     return mcp.get_user_activity_summary("slack", days_back)
+
+def get_multi_platform_summary(days_back: int = 90) -> Dict[str, Any]:
+    """獲取多平台活動摘要"""
+    mcp = UserStatsMCP()
+    return mcp.get_multi_platform_summary(days_back)
+
+def get_calendar_event_stats(days_back: int = 90) -> Dict[str, Any]:
+    """獲取日曆事件統計"""
+    mcp = UserStatsMCP()
+    return mcp.get_calendar_event_stats(days_back)

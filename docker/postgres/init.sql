@@ -53,6 +53,99 @@ CREATE TABLE IF NOT EXISTS collection_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create user name mapping table for displaying real names instead of anonymized IDs
+CREATE TABLE IF NOT EXISTS user_name_mappings (
+    id SERIAL PRIMARY KEY,
+    platform TEXT NOT NULL,  -- 'slack', 'github', 'facebook'
+    original_user_id TEXT NOT NULL,  -- Original user identifier from platform
+    anonymized_id TEXT NOT NULL,  -- Anonymized identifier used in data
+    display_name TEXT NOT NULL,  -- Preferred display name (e.g., "蔡嘉平", "Jesse")
+    real_name TEXT,  -- Real name if available
+    aliases TEXT[],  -- Array of aliases (e.g., ["偉赳", "jonas"])
+    group_terms TEXT[],  -- Group terms this user might be referred to (e.g., ["大神", "大佬"])
+    is_active BOOLEAN DEFAULT TRUE,  -- Whether this mapping is active
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(platform, original_user_id)
+);
+
+-- Create indexes for user name mappings
+CREATE INDEX IF NOT EXISTS idx_user_name_mappings_anon_id ON user_name_mappings(anonymized_id);
+CREATE INDEX IF NOT EXISTS idx_user_name_mappings_display_name ON user_name_mappings(display_name);
+CREATE INDEX IF NOT EXISTS idx_user_name_mappings_aliases ON user_name_mappings USING GIN(aliases);
+CREATE INDEX IF NOT EXISTS idx_user_name_mappings_group_terms ON user_name_mappings USING GIN(group_terms);
+
+-- Create project descriptions table for accurate project information
+CREATE TABLE IF NOT EXISTS project_descriptions (
+    id TEXT PRIMARY KEY,
+    repository TEXT NOT NULL UNIQUE,  -- Format: owner/repo
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    readme_content TEXT,  -- Full README content
+    source TEXT NOT NULL,  -- 'github_readme', 'ai_generated', 'manual'
+    confidence_score FLOAT DEFAULT 0.0,  -- 0-1 confidence score
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_verified BOOLEAN DEFAULT FALSE,
+    metadata JSONB,  -- Additional metadata like stars, forks, topics
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for project descriptions
+CREATE INDEX IF NOT EXISTS idx_project_descriptions_repository ON project_descriptions(repository);
+CREATE INDEX IF NOT EXISTS idx_project_descriptions_source ON project_descriptions(source);
+CREATE INDEX IF NOT EXISTS idx_project_descriptions_confidence ON project_descriptions(confidence_score);
+CREATE INDEX IF NOT EXISTS idx_project_descriptions_verified ON project_descriptions(is_verified);
+
+-- Create Google Calendar events table
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id TEXT PRIMARY KEY,  -- Google Calendar event ID
+    calendar_id TEXT NOT NULL,  -- Google Calendar ID
+    title TEXT NOT NULL,
+    description TEXT,
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    location TEXT,
+    attendees JSONB,  -- Array of attendee information
+    creator_email TEXT,
+    organizer_email TEXT,
+    status TEXT,  -- 'confirmed', 'tentative', 'cancelled'
+    visibility TEXT,  -- 'default', 'public', 'private'
+    recurrence TEXT,  -- Recurrence rule if applicable
+    source_url TEXT,  -- Link to the event in Google Calendar
+    metadata JSONB,  -- Additional metadata
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for calendar events
+CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_start_time ON calendar_events(start_time);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_end_time ON calendar_events(end_time);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_title ON calendar_events USING GIN(to_tsvector('english', title));
+
+-- Create Google Calendar calendars table
+CREATE TABLE IF NOT EXISTS google_calendars (
+    id TEXT PRIMARY KEY,  -- Google Calendar ID
+    name TEXT NOT NULL,
+    description TEXT,
+    timezone TEXT,
+    access_role TEXT,  -- 'owner', 'reader', 'writer', 'freeBusyReader'
+    is_primary BOOLEAN DEFAULT FALSE,
+    is_selected BOOLEAN DEFAULT TRUE,
+    color_id TEXT,
+    background_color TEXT,
+    foreground_color TEXT,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for google calendars
+CREATE INDEX IF NOT EXISTS idx_google_calendars_name ON google_calendars(name);
+CREATE INDEX IF NOT EXISTS idx_google_calendars_is_primary ON google_calendars(is_primary);
+CREATE INDEX IF NOT EXISTS idx_google_calendars_is_selected ON google_calendars(is_selected);
+
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -63,8 +156,17 @@ END;
 $$ language 'plpgsql';
 
 -- Create trigger for updated_at
-CREATE TRIGGER update_community_data_updated_at 
+CREATE TRIGGER update_community_data_updated_at
     BEFORE UPDATE ON community_data 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Create triggers for calendar tables
+CREATE TRIGGER update_calendar_events_updated_at
+    BEFORE UPDATE ON calendar_events 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_google_calendars_updated_at
+    BEFORE UPDATE ON google_calendars 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Create partitioned table for better performance

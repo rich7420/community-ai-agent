@@ -37,8 +37,8 @@ class DatabaseConnectionPool:
         if self.pool is None:
             try:
                 self.pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1,
-                    maxconn=20,
+                    minconn=2,
+                    maxconn=50,
                     host=os.getenv('POSTGRES_HOST', 'localhost'),
                     port=os.getenv('POSTGRES_PORT', '5432'),
                     database=os.getenv('POSTGRES_DB', 'community_ai'),

@@ -459,22 +459,26 @@ class GitHubCollector:
             try:
                 self.logger.info(f"收集倉庫 {repo_name}")
                 
-                # 收集Issues
-                issues = self.collect_repository_issues(repo_name, days_back)
-                all_data['issues'].extend(issues)
-                self.stats['issues_collected'] += len(issues)
+                # 只有 opensource4you/readme 倉庫才收集 issues, PRs, commits
+                if repo_name == "opensource4you/readme":
+                    # 收集Issues
+                    issues = self.collect_repository_issues(repo_name, days_back)
+                    all_data['issues'].extend(issues)
+                    self.stats['issues_collected'] += len(issues)
+                    
+                    # 收集PRs
+                    prs = self.collect_repository_prs(repo_name, days_back)
+                    all_data['pull_requests'].extend(prs)
+                    self.stats['prs_collected'] += len(prs)
+                    
+                    # 收集Commits
+                    commits = self.collect_repository_commits(repo_name, days_back)
+                    all_data['commits'].extend(commits)
+                    self.stats['commits_collected'] += len(commits)
+                else:
+                    self.logger.info(f"跳過 {repo_name} 的 issues, PRs, commits 收集（只收集文件）")
                 
-                # 收集PRs
-                prs = self.collect_repository_prs(repo_name, days_back)
-                all_data['pull_requests'].extend(prs)
-                self.stats['prs_collected'] += len(prs)
-                
-                # 收集Commits
-                commits = self.collect_repository_commits(repo_name, days_back)
-                all_data['commits'].extend(commits)
-                self.stats['commits_collected'] += len(commits)
-                
-                # 收集文件內容
+                # 收集文件內容（所有倉庫都需要）
                 files = self.collect_repository_files(repo_name)
                 all_data['files'].extend(files)
                 self.stats['files_collected'] = getattr(self.stats, 'files_collected', 0) + len(files)
@@ -502,11 +506,11 @@ class GitHubCollector:
             self.logger.info(f"開始收集倉庫 {repo_name} 的文件內容")
             
             # 先掃描所有文件和資料夾
-            all_items = self._scan_repository_structure(repo, "")
+            all_items = self._scan_repository_structure(repo, "", repo_name)
             self.logger.info(f"掃描完成，發現 {len(all_items['files'])} 個文件，{len(all_items['dirs'])} 個資料夾")
             
             # 根據策略決定收集哪些文件
-            files_to_collect = self._select_files_to_collect(all_items['files'])
+            files_to_collect = self._select_files_to_collect(all_items['files'], repo_name)
             self.logger.info(f"選擇收集 {len(files_to_collect)} 個重要文件")
             
             # 收集選定的文件
@@ -514,8 +518,9 @@ class GitHubCollector:
                 try:
                     file_data = self._collect_single_file(repo, file_info, repo_name)
                     if file_data:
-                        # 如果文件內容過長，進行分塊
-                        if len(file_data.content) > 2000:  # 超過2000字元就分塊
+                        # 根據文件類型決定是否分塊
+                        should_chunk = self._should_chunk_file(file_data)
+                        if should_chunk:
                             chunks = self._split_file_content(file_data)
                             files.extend(chunks)
                             self.logger.info(f"文件 {file_data.path} 已分塊為 {len(chunks)} 個片段")
@@ -539,6 +544,11 @@ class GitHubCollector:
         try:
             content = file_data.content
             content_length = len(content)
+            file_name = file_data.name.lower()
+            
+            # README文件特殊處理
+            if 'readme' in file_name:
+                return self._split_readme_file(file_data, content)
             
             # 根據文件大小採用不同策略
             if content_length <= 1000:
@@ -553,6 +563,68 @@ class GitHubCollector:
             
         except Exception as e:
             self.logger.error(f"分塊文件 {file_data.path} 失敗: {e}")
+            return [file_data]  # 如果失敗，返回原始文件
+    
+    def _split_readme_file(self, file_data: GitHubFile, content: str) -> List[GitHubFile]:
+        """README文件專用分塊策略，保持語義完整性"""
+        chunks = []
+        
+        try:
+            # 首先嘗試按標題分割
+            title_chunks = self._split_by_headers(content)
+            if len(title_chunks) > 1:
+                self.logger.info(f"README文件 {file_data.path} 按標題分為 {len(title_chunks)} 個區塊")
+                
+                for i, title_chunk in enumerate(title_chunks):
+                    if len(title_chunk.strip()) > 100:  # 只保留有意義的塊
+                        chunk_data = GitHubFile(
+                            path=file_data.path,
+                            name=file_data.name,
+                            content=title_chunk.strip(),
+                            size=len(title_chunk),
+                            sha=f"{file_data.sha}_readme_title_{i}",
+                            url=file_data.url,
+                            download_url=file_data.download_url,
+                            type=file_data.type,
+                            encoding=file_data.encoding,
+                            author=file_data.author,
+                            last_modified=file_data.last_modified,
+                            metadata={
+                                **file_data.metadata,
+                                'chunk_index': i,
+                                'total_chunks': len(title_chunks),
+                                'is_chunk': True,
+                                'original_sha': file_data.sha,
+                                'split_type': 'readme_title',
+                                'title_index': i
+                            }
+                        )
+                        chunks.append(chunk_data)
+                
+                return chunks
+            
+            # 如果沒有標題，嘗試按段落分割
+            paragraph_chunks = self._split_by_paragraphs(content, max_chunk_size=600)
+            if len(paragraph_chunks) > 1:
+                self.logger.info(f"README文件 {file_data.path} 按段落分為 {len(paragraph_chunks)} 個區塊")
+                return self._create_chunks_from_texts(file_data, paragraph_chunks, "readme_paragraph")
+            
+            # 最後使用LangChain分割器，針對README優化
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=500,  # README使用較小的塊
+                chunk_overlap=100,  # 增加重疊以保持上下文
+                length_function=len,
+                separators=["\n\n", "\n", "。", "！", "？", "，", " ", ""],
+                keep_separator=True
+            )
+            
+            split_texts = text_splitter.split_text(content)
+            chunks = self._create_chunks_from_texts(file_data, split_texts, "readme_langchain")
+            self.logger.info(f"README文件 {file_data.path} 已使用 LangChain 分塊為 {len(chunks)} 個片段")
+            return chunks
+            
+        except Exception as e:
+            self.logger.error(f"README文件分塊失敗 {file_data.path}: {e}")
             return [file_data]  # 如果失敗，返回原始文件
     
     def _split_medium_file(self, file_data: GitHubFile, content: str) -> List[GitHubFile]:
@@ -673,6 +745,27 @@ class GitHubCollector:
         self.logger.info(f"大文件 {file_data.path} 已使用 LangChain 分塊為 {len(chunks)} 個片段")
         return chunks
     
+    def _should_chunk_file(self, file_data: GitHubFile) -> bool:
+        """判斷文件是否需要分塊"""
+        content_length = len(file_data.content)
+        file_name = file_data.name.lower()
+        file_path = file_data.path.lower()
+        
+        # README文件：即使較短也要分塊，以便更好地檢索
+        if 'readme' in file_name:
+            return content_length > 500  # README文件超過500字元就分塊
+        
+        # Markdown文件：優先分塊
+        if file_name.endswith('.md'):
+            return content_length > 800  # Markdown文件超過800字元就分塊
+        
+        # 文檔目錄中的文件：優先分塊
+        if 'docs' in file_path or 'doc' in file_path:
+            return content_length > 1000  # 文檔文件超過1000字元就分塊
+        
+        # 其他文件：按原策略
+        return content_length > 2000  # 其他文件超過2000字元才分塊
+    
     def _split_by_headers(self, content: str) -> List[str]:
         """按標題分割內容"""
         import re
@@ -768,7 +861,7 @@ class GitHubCollector:
         
         return chunks
     
-    def _scan_repository_structure(self, repo, path: str) -> Dict[str, List[Dict]]:
+    def _scan_repository_structure(self, repo, path: str, repo_name: str = "") -> Dict[str, List[Dict]]:
         """掃描倉庫結構，獲取所有文件和資料夾信息"""
         all_items = {'files': [], 'dirs': []}
         
@@ -800,10 +893,15 @@ class GitHubCollector:
                     
                 elif content.type == "dir":
                     all_items['dirs'].append(item_info)
-                    # 遞歸掃描子目錄
-                    sub_items = self._scan_repository_structure(repo, content.path)
-                    all_items['files'].extend(sub_items['files'])
-                    all_items['dirs'].extend(sub_items['dirs'])
+                    
+                    # 只有 opensource4you/readme 倉庫才遞歸掃描子目錄
+                    if repo_name == "opensource4you/readme":
+                        sub_items = self._scan_repository_structure(repo, content.path, repo_name)
+                        all_items['files'].extend(sub_items['files'])
+                        all_items['dirs'].extend(sub_items['dirs'])
+                    else:
+                        # 其他倉庫不掃描子目錄
+                        self.logger.info(f"跳過子目錄 {content.path} (非 opensource4you/readme 倉庫)")
                     
         except Exception as e:
             self.logger.warning(f"掃描路徑 {path} 失敗: {e}")
@@ -851,38 +949,67 @@ class GitHubCollector:
             
         return max(0, min(100, score))
     
-    def _select_files_to_collect(self, all_files: List[Dict]) -> List[Dict]:
-        """根據策略選擇要收集的文件"""
+    def _select_files_to_collect(self, all_files: List[Dict], repo_name: str = "") -> List[Dict]:
+        """根據策略選擇要收集的文件，根據倉庫類型使用不同策略"""
         # 按重要性分數排序
         sorted_files = sorted(all_files, key=lambda x: x['importance_score'], reverse=True)
         
         # 收集策略
         selected_files = []
         
-        # 1. 收集所有 .md 檔案 (優先級最高)
-        md_files = [f for f in sorted_files if f['name'].lower().endswith('.md')]
-        selected_files.extend(md_files)
-        self.logger.info(f"選擇收集所有 .md 檔案: {len(md_files)} 個")
-        
-        # 2. 收集所有高分文件 (分數 >= 50) - 非 .md 檔案
-        high_score_files = [f for f in sorted_files if f['importance_score'] >= 50 and not f['name'].lower().endswith('.md')]
-        selected_files.extend(high_score_files)
-        
-        # 3. 收集文檔目錄中的重要文件 - 非 .md 檔案
-        doc_files = [f for f in sorted_files if 'docs' in f['path'].lower() or 'doc' in f['path'].lower()]
-        doc_files = [f for f in doc_files if f['importance_score'] >= 30 and not f['name'].lower().endswith('.md')]
-        selected_files.extend(doc_files)
-        
-        # 4. 限制總文件數 (避免收集過多文件) - 但確保所有 .md 檔案都被包含
-        max_files = 100  # 增加限制，因為要收集所有 .md 檔案
-        if len(selected_files) > max_files:
-            # 優先保留 .md 檔案
-            md_files_in_selected = [f for f in selected_files if f['name'].lower().endswith('.md')]
-            non_md_files = [f for f in selected_files if not f['name'].lower().endswith('.md')]
+        if repo_name == "opensource4you/readme":
+            # opensource4you/readme 倉庫：收集所有文件
+            self.logger.info("使用完整收集策略 (opensource4you/readme 倉庫)")
             
-            # 保留所有 .md 檔案 + 其他高分檔案
-            remaining_slots = max_files - len(md_files_in_selected)
-            selected_files = md_files_in_selected + non_md_files[:remaining_slots]
+            # 1. 收集所有 README 相關文件 (最高優先級)
+            readme_files = [f for f in sorted_files if 'readme' in f['name'].lower()]
+            selected_files.extend(readme_files)
+            self.logger.info(f"選擇收集所有 README 檔案: {len(readme_files)} 個")
+            
+            # 2. 收集所有 .md 檔案 (第二優先級)
+            md_files = [f for f in sorted_files if f['name'].lower().endswith('.md') and 'readme' not in f['name'].lower()]
+            selected_files.extend(md_files)
+            self.logger.info(f"選擇收集其他 .md 檔案: {len(md_files)} 個")
+            
+            # 3. 收集文檔目錄中的重要文件
+            doc_files = [f for f in sorted_files if ('docs' in f['path'].lower() or 'doc' in f['path'].lower()) 
+                        and f['importance_score'] >= 30 and not f['name'].lower().endswith('.md')]
+            selected_files.extend(doc_files)
+            self.logger.info(f"選擇收集文檔目錄文件: {len(doc_files)} 個")
+            
+            # 4. 收集其他高分文件 (分數 >= 50)
+            high_score_files = [f for f in sorted_files if f['importance_score'] >= 50 
+                               and not f['name'].lower().endswith('.md') 
+                               and 'readme' not in f['name'].lower()
+                               and not ('docs' in f['path'].lower() or 'doc' in f['path'].lower())]
+            selected_files.extend(high_score_files)
+            self.logger.info(f"選擇收集其他高分文件: {len(high_score_files)} 個")
+            
+            # 5. 限制總文件數，但確保所有 README 和 .md 檔案都被包含
+            max_files = 200  # 增加限制以容納更多文件
+            if len(selected_files) > max_files:
+                # 優先保留 README 和 .md 檔案
+                readme_and_md_files = [f for f in selected_files if f['name'].lower().endswith('.md') or 'readme' in f['name'].lower()]
+                other_files = [f for f in selected_files if not (f['name'].lower().endswith('.md') or 'readme' in f['name'].lower())]
+                
+                # 保留所有 README 和 .md 檔案 + 其他高分檔案
+                remaining_slots = max_files - len(readme_and_md_files)
+                selected_files = readme_and_md_files + other_files[:remaining_slots]
+        
+        else:
+            # 其他倉庫：只收集最外層的README文件
+            self.logger.info("使用簡化收集策略 (只收集最外層README文件)")
+            
+            # 只收集根目錄的README文件
+            readme_files = [f for f in sorted_files if 'readme' in f['name'].lower() and '/' not in f['path']]
+            selected_files.extend(readme_files)
+            self.logger.info(f"選擇收集根目錄 README 檔案: {len(readme_files)} 個")
+            
+            # 如果沒有README，收集根目錄的.md文件
+            if not readme_files:
+                md_files = [f for f in sorted_files if f['name'].lower().endswith('.md') and '/' not in f['path']]
+                selected_files.extend(md_files)
+                self.logger.info(f"選擇收集根目錄 .md 檔案: {len(md_files)} 個")
         
         # 去重
         seen_paths = set()
@@ -892,7 +1019,9 @@ class GitHubCollector:
                 unique_files.append(file_info)
                 seen_paths.add(file_info['path'])
         
-        self.logger.info(f"最終選擇收集 {len(unique_files)} 個檔案，其中 .md 檔案: {len([f for f in unique_files if f['name'].lower().endswith('.md')])} 個")
+        readme_count = len([f for f in unique_files if 'readme' in f['name'].lower()])
+        md_count = len([f for f in unique_files if f['name'].lower().endswith('.md')])
+        self.logger.info(f"最終選擇收集 {len(unique_files)} 個檔案，其中 README: {readme_count} 個，.md 檔案: {md_count} 個")
         
         return unique_files
     

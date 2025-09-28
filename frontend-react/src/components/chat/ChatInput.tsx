@@ -17,6 +17,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   disabled = false,
 }) => {
   const [message, setMessage] = useState('')
+  const [isComposing, setIsComposing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -28,10 +29,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 檢查是否在輸入法組合狀態中（IME composition）
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
       e.preventDefault()
       handleSubmit(e)
     }
+  }
+
+  const handleCompositionStart = () => {
+    setIsComposing(true)
+  }
+
+  const handleCompositionEnd = () => {
+    setIsComposing(false)
   }
 
   // Auto-resize textarea
@@ -51,6 +61,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             placeholder={placeholder}
             disabled={disabled || isLoading}
             className={cn(
@@ -76,7 +88,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       </form>
       
       <div className="mt-1 sm:mt-2 text-xs text-gray-500 dark:text-gray-400 text-center sm:text-left">
-        按 Enter 發送，Shift + Enter 換行
+        按 Enter 發送，Shift + Enter 換行（支援中文輸入法）
       </div>
     </div>
   )

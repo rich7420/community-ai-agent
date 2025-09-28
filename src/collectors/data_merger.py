@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 import json
 import re
 from utils.logging_config import structured_logger
+from utils.pii_filter import PIIFilter
 
 @dataclass
 class StandardizedRecord:
@@ -30,13 +31,14 @@ class DataMerger:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self.pii_filter = PIIFilter()
         
         # 資料驗證規則
         self.validation_rules = {
             'required_fields': ['id', 'platform', 'content', 'author', 'timestamp'],
             'max_content_length': 100000,  # 增加到 100KB，支援大型文件
             'max_metadata_size': 50000,  # 字節
-            'allowed_platforms': ['slack', 'github', 'facebook']
+            'allowed_platforms': ['slack', 'github', 'facebook', 'google_calendar']
         }
     
     def merge_slack_data(self, messages: List[Dict[str, Any]]) -> List[StandardizedRecord]:
@@ -160,9 +162,85 @@ class DataMerger:
         self.logger.info(f"Facebook資料合併完成，共 {len(records)} 條記錄")
         return records
     
+    def merge_google_calendar_data(self, events: List[Any]) -> List[StandardizedRecord]:
+        """
+        合併Google Calendar資料
+        
+        Args:
+            events: Google Calendar事件列表 (CalendarEvent對象)
+            
+        Returns:
+            標準化記錄列表
+        """
+        records = []
+        
+        for event in events:
+            try:
+                # 構建事件內容
+                content_parts = [
+                    f"事件標題: {event.title}",
+                    f"開始時間: {event.start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                    f"結束時間: {event.end_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                ]
+                
+                if event.description:
+                    content_parts.append(f"描述: {event.description}")
+                
+                if event.location:
+                    content_parts.append(f"地點: {event.location}")
+                
+                if event.attendees:
+                    attendee_names = [att.get('display_name', att.get('email', '')) for att in event.attendees if att.get('display_name') or att.get('email')]
+                    if attendee_names:
+                        content_parts.append(f"參與者: {', '.join(attendee_names)}")
+                
+                if event.creator_email:
+                    content_parts.append(f"創建者: {event.creator_email}")
+                
+                if event.organizer_email:
+                    content_parts.append(f"組織者: {event.organizer_email}")
+                
+                content = "\n".join(content_parts)
+                
+                # 構建元數據
+                metadata = {
+                    'event_id': event.id,
+                    'calendar_id': event.calendar_id,
+                    'status': event.status,
+                    'visibility': event.visibility,
+                    'recurrence': event.recurrence,
+                    'source_url': event.source_url,
+                    'attendees_count': len(event.attendees),
+                    'is_recurring': bool(event.recurrence),
+                    'event_type': 'calendar_event'
+                }
+                
+                # 創建標準化記錄
+                record = StandardizedRecord(
+                    id=f"calendar_{event.id}",
+                    platform='google_calendar',
+                    content=content,
+                    author=event.creator_email or event.organizer_email or 'unknown',
+                    timestamp=event.start_time,
+                    source_url=event.source_url or '',
+                    metadata=metadata,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now()
+                )
+                
+                records.append(record)
+                
+            except Exception as e:
+                self.logger.error(f"合併Google Calendar事件失敗 {event.id}: {e}")
+                continue
+        
+        self.logger.info(f"Google Calendar資料合併完成，共 {len(records)} 條記錄")
+        return records
+    
     def merge_all_data(self, slack_data: List[Dict[str, Any]] = None,
                       github_data: Dict[str, List[Dict[str, Any]]] = None,
-                      facebook_data: List[Dict[str, Any]] = None) -> List[StandardizedRecord]:
+                      facebook_data: List[Dict[str, Any]] = None,
+                      calendar_data: List[Any] = None) -> List[StandardizedRecord]:
         """
         合併所有資料源
         
@@ -170,6 +248,7 @@ class DataMerger:
             slack_data: Slack資料
             github_data: GitHub資料 {'issues': [], 'prs': [], 'commits': []}
             facebook_data: Facebook資料
+            calendar_data: Google Calendar事件資料
             
         Returns:
             標準化記錄列表
@@ -195,6 +274,11 @@ class DataMerger:
         if facebook_data:
             facebook_records = self.merge_facebook_data(facebook_data)
             all_records.extend(facebook_records)
+        
+        # 合併Google Calendar資料
+        if calendar_data:
+            calendar_records = self.merge_google_calendar_data(calendar_data)
+            all_records.extend(calendar_records)
         
         # 資料清理和驗證
         cleaned_records = self._clean_and_validate_records(all_records)
@@ -289,7 +373,8 @@ class DataMerger:
                     'subtype': getattr(msg, 'subtype', None),
                 }
                 content = msg.text
-                author = msg.user
+                # 使用匿名化的用戶ID
+                author = self.pii_filter.anonymize_user(msg.user, getattr(msg, 'user_name', ''))
             else:
                 # 字典格式
                 record_id = f"slack_{msg['channel']}_{msg['ts']}"
@@ -305,7 +390,10 @@ class DataMerger:
                 'subtype': msg.get('subtype'),
                 'has_thread': bool(msg.get('thread_ts')),
                 'reply_count': msg.get('reply_count', 0)
-            }
+                }
+                content = msg['text']
+                # 使用匿名化的用戶ID
+                author = self.pii_filter.anonymize_user(msg['user'], msg.get('user_name', ''))
             
             return StandardizedRecord(
                 id=record_id,
@@ -633,6 +721,72 @@ class DataMerger:
             return True
             
         except Exception as e:
+            self.logger.error(f"驗證GitHub文件失敗: {e}")
+            return False
+    
+    def _convert_github_file_to_standard(self, file_data) -> Optional[StandardizedRecord]:
+        """將GitHub文件轉換為標準格式"""
+        try:
+            # 處理 dataclass 對象或字典
+            if hasattr(file_data, '__dict__'):
+                # GitHubFile dataclass 對象
+                sha = file_data.sha
+                content = file_data.content
+                path = file_data.path
+                author = file_data.author
+                last_modified = file_data.last_modified
+                url = file_data.url
+                size = file_data.size
+                metadata = file_data.metadata
+            else:
+                # 字典格式
+                sha = file_data.get('sha', '')
+                content = file_data.get('content', '')
+                path = file_data.get('path', '')
+                author = file_data.get('author', 'unknown')
+                last_modified = file_data.get('last_modified', datetime.now())
+                url = file_data.get('url', '')
+                size = file_data.get('size', 0)
+                metadata = file_data.get('metadata', {})
+            
+            # 生成唯一ID
+            record_id = f"github_file_{sha}"
+            
+            # 構建內容（包含路徑信息）
+            if path:
+                formatted_content = f"文件路徑: {path}\n\n{content}"
+            else:
+                formatted_content = content
+            
+            # 構建元資料
+            file_metadata = {
+                'type': 'file',
+                'path': path,
+                'sha': sha,
+                'size': size,
+                'file_type': metadata.get('file_type', 'unknown'),
+                'importance_score': metadata.get('importance_score', 0),
+                'directory': metadata.get('directory', ''),
+                'repository': metadata.get('repository', ''),
+                'encoding': metadata.get('encoding', 'utf-8')
+            }
+            
+            return StandardizedRecord(
+                id=record_id,
+                platform='github',
+                content=formatted_content,
+                author=author,
+                timestamp=last_modified,
+                source_url=url,
+                metadata=file_metadata,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            
+        except Exception as e:
+            self.logger.error(f"轉換GitHub文件失敗: {e}")
+            return None
+
             self.logger.error(f"驗證GitHub文件失敗: {e}")
             return False
     

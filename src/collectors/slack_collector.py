@@ -201,11 +201,11 @@ class SlackCollector:
                     break
                 
                 # 避免API限制
-                time.sleep(1)
+                time.sleep(5)
                 
             except SlackApiError as e:
                 if e.response['error'] == 'ratelimited':
-                    wait_time = int(e.response['headers'].get('Retry-After', 1))
+                    wait_time = int(e.response['headers'].get('Retry-After', 5))
                     self.logger.warning(f"API限制，等待 {wait_time} 秒")
                     time.sleep(wait_time)
                     continue
@@ -257,7 +257,7 @@ class SlackCollector:
                     break
                 
                 # 避免API限制
-                time.sleep(1)
+                time.sleep(5)
             
             self.logger.info(f"線程 {thread_ts} 回覆收集完成，共 {len(replies)} 條回覆")
                         
@@ -291,9 +291,24 @@ class SlackCollector:
                 user_info = self._get_user_info(user_id)
                 # 使用真實使用者名稱，優先使用 real_name，其次使用 name
                 real_name = user_info.get('real_name') or user_info.get('name') or 'Unknown User'
+                
+                # 匿名化使用者資訊
+                anon_user = self.pii_filter.anonymize_user(user_id, real_name)
+                
+                # 添加用戶映射到映射表
+                display_name = user_info.get('real_name') or user_info.get('name', 'Unknown User')
+                self.pii_filter.add_user_mapping(
+                    platform='slack',
+                    original_user_id=user_id,
+                    anonymized_id=anon_user,
+                    display_name=display_name,
+                    real_name=user_info.get('real_name'),
+                    aliases=[user_info.get('name', '')] if user_info.get('name') else []
+                )
             else:
                 user_info = {'name': 'unknown', 'real_name': 'Unknown User'}
                 real_name = 'Unknown User'
+                anon_user = 'unknown'
             
             # 解析訊息內容
             text = msg.get('text', '')
@@ -383,6 +398,9 @@ class SlackCollector:
                     'original_user': user_id,
                     'real_name': real_name,  # 添加真實使用者名稱
                     'user_info': user_info,  # 保留完整使用者資訊
+                    'user_profile': user_info,  # 添加user_profile字段，與user_info相同
+                    'user_name': user_info.get('name', ''),  # 添加user_name字段
+                    'display_name': user_info.get('display_name', ''),  # 添加display_name字段
                     'channel': channel_id,  # 頻道ID
                     'channel_name': channel_info.get('name', 'unknown') if channel_info else 'unknown',  # 頻道名稱
                     'channel_info': channel_info,  # 完整頻道資訊
@@ -435,7 +453,7 @@ class SlackCollector:
                     break
                 
                 # 避免速率限制
-                time.sleep(1)
+                time.sleep(5)
             
             self.user_cache = users
             self.logger.info(f"使用者快取建立完成，共 {len(users)} 個使用者")
@@ -479,8 +497,29 @@ class SlackCollector:
                 'email': user.get('email', '')
             }
         else:
-            # 如果快取中沒有，返回預設值
-            self.logger.debug(f"使用者 {user_id} 不在快取中")
+            # 如果快取中沒有，嘗試從API獲取
+            try:
+                response = self.bot_client.users_info(user=user_id)
+                if response['ok']:
+                    user = response['user']
+                    profile = user.get('profile', {})
+                    user_info = {
+                        'name': user.get('name', ''),
+                        'real_name': profile.get('real_name', ''),
+                        'display_name': profile.get('display_name', '') or profile.get('real_name', ''),
+                        'email': profile.get('email', '')
+                    }
+                    # 更新快取
+                    self.user_cache[user_id] = user_info
+                    self.logger.info(f"從API獲取使用者資訊: {user_id} -> {user_info['real_name']}")
+                    return user_info
+                else:
+                    self.logger.warning(f"無法獲取使用者資訊: {user_id}, 錯誤: {response.get('error')}")
+            except Exception as e:
+                self.logger.warning(f"獲取使用者資訊失敗: {user_id}, 錯誤: {e}")
+            
+            # 如果API也失敗，返回預設值
+            self.logger.debug(f"使用者 {user_id} 不在快取中且API獲取失敗")
             return {
                 'name': user_id, 
                 'real_name': f'User {user_id}', 
@@ -515,7 +554,19 @@ class SlackCollector:
                             user_info = {'name': 'unknown', 'real_name': 'Unknown User'}
                         
                         # 匿名化使用者資訊
-                        anon_user = self.pii_filter.anonymize_user(user_id, user_info.get('name', ''))
+                        real_name = user_info.get('real_name') or user_info.get('name') or 'Unknown User'
+                        anon_user = self.pii_filter.anonymize_user(user_id, real_name)
+                        
+                        # 添加用戶映射到映射表
+                        display_name = user_info.get('real_name') or user_info.get('name', 'Unknown User')
+                        self.pii_filter.add_user_mapping(
+                            platform='slack',
+                            original_user_id=user_id,
+                            anonymized_id=anon_user,
+                            display_name=display_name,
+                            real_name=user_info.get('real_name'),
+                            aliases=[user_info.get('name', '')] if user_info.get('name') else []
+                        )
                         
                         # 解析回覆內容
                         text = reply_msg.get('text', '')
@@ -528,7 +579,7 @@ class SlackCollector:
                                 reply_reactions.append({
                                     'name': reaction['name'],
                                     'count': reaction['count'],
-                                    'users': [self.pii_filter.anonymize_user(uid) for uid in reaction.get('users', [])]
+                                    'users': [self.pii_filter.anonymize_user(uid, 'Unknown User') for uid in reaction.get('users', [])]
                                 })
                         
                         reply_data = {
@@ -577,13 +628,13 @@ class SlackCollector:
                 self.stats['messages_collected'] += len(messages)
                 
                 # 避免API限制 - 增加等待時間
-                time.sleep(3)
+                time.sleep(5)
                 
             except Exception as e:
                 self.logger.error(f"收集頻道 {channel_name} 失敗: {e}")
                 self.stats['errors'] += 1
                 # 錯誤後等待更長時間
-                time.sleep(5)
+                time.sleep(15)
         
         self.stats['end_time'] = datetime.now()
         self.logger.info(f"所有頻道收集完成，共 {len(all_messages)} 條訊息")
@@ -620,12 +671,12 @@ class SlackCollector:
                 self.stats['messages_collected'] += len(messages)
                 
                 # 避免API限制
-                time.sleep(2)
+                time.sleep(5)
                 
             except Exception as e:
                 self.logger.error(f"收集頻道 {channel_name} 失敗: {e}")
                 self.stats['errors'] += 1
-                time.sleep(3)
+                time.sleep(5)
         
         self.stats['end_time'] = datetime.now()
         self.logger.info(f"Bot 頻道收集完成，共 {len(all_messages)} 條訊息")
@@ -678,7 +729,7 @@ class SlackCollector:
                         if not cursor:
                             break
                         
-                        time.sleep(1)  # 避免API限制
+                        time.sleep(5)  # 避免API限制
                         
                 except Exception as e:
                     self.logger.warning(f"獲取 {channel_type} 頻道時發生錯誤: {e}")
@@ -777,3 +828,4 @@ class SlackCollector:
     def get_collection_stats(self) -> Dict[str, Any]:
         """獲取收集統計"""
         return self.stats.copy()
+

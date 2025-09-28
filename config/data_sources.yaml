@@ -41,9 +41,34 @@ github:
   repositories:
     - name: "opensource4you/readme"
       enabled: true
+    - name: "apache/kafka"
+      enabled: true
+    - name: "apache/yunikorn-core"
+      enabled: true
+    - name: "apache/gravitino"
+      enabled: true
+    - name: "apache/airflow"
+      enabled: true
+    - name: "apache/ozone"
+      enabled: true
+    - name: "apache/datafusion"
+      enabled: true
+    - name: "apache/ambari"
+      enabled: true
+    - name: "flyteorg/flyte"
+      enabled: true
+    - name: "ray-project/kuberay"
+      enabled: true
+    - name: "ray-project/ray"
+      enabled: true
+    - name: "linkedin/Liger-Kernel"
+      enabled: true
+    - name: "commitizen-tools/commitizen"
+      enabled: true
   collection_frequency: "daily"
   max_issues: 500
   max_prs: 500
+  max_files: 200  # 增加文件收集限制
 
 facebook:
   pages:

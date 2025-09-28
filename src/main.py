@@ -48,6 +48,10 @@ app.include_router(health_router)
 qa_system: Optional[CommunityQASystem] = None
 async_generator: Optional[AsyncAnswerGenerator] = None
 
+# Import collectors for initial data collection
+from src.collectors.slack_collector import SlackCollector
+from src.collectors.github_collector import GitHubCollector
+
 # Pydantic models
 class QuestionRequest(BaseModel):
     question: str
@@ -91,6 +95,234 @@ def get_qa_system() -> CommunityQASystem:
             raise HTTPException(status_code=500, detail=f"Q&A system initialization failed: {str(e)}")
     
     return qa_system
+
+@app.on_event("startup")
+async def startup_event():
+    """應用程序啟動時的事件處理"""
+    logger.info("應用程序啟動中...")
+    
+    # 啟動後台數據收集任務
+    import asyncio
+    asyncio.create_task(background_data_collection())
+    logger.info("後台數據收集任務已啟動")
+
+async def background_data_collection():
+    """後台數據收集任務"""
+    import asyncio
+    
+    # 等待5秒讓API服務完全啟動
+    await asyncio.sleep(5)
+    
+    try:
+        await initial_data_collection()
+        logger.info("後台數據收集完成")
+    except Exception as e:
+        logger.error(f"後台數據收集失敗: {e}")
+
+async def initial_data_collection():
+    """初始數據收集，建立用戶映射"""
+    try:
+        # 檢查是否需要進行初始收集
+        from src.storage.connection_pool import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 檢查是否已有用戶映射數據
+        cur.execute("SELECT COUNT(*) as count FROM user_name_mappings")
+        result = cur.fetchone()
+        user_mapping_count = result['count'] if result else 0
+        
+        cur.close()
+        return_db_connection(conn)
+        
+        # 檢查是否已有用戶映射數據，如果有就跳過初始收集
+        if user_mapping_count > 0:
+            logger.info(f"用戶映射已存在 ({user_mapping_count} 條記錄)，跳過初始收集")
+            return
+        
+        logger.info("開始初始數據收集以建立用戶映射...")
+        
+        logger.info("開始初始數據收集以建立用戶映射...")
+        
+        # 初始化收集器
+        slack_collector = None
+        github_collector = None
+        
+        # 初始化Slack收集器
+        slack_bot_token = os.getenv('SLACK_BOT_TOKEN')
+        slack_app_token = os.getenv('SLACK_APP_TOKEN')
+        if slack_bot_token and slack_app_token:
+            try:
+                slack_collector = SlackCollector(slack_bot_token, slack_app_token)
+                logger.info("Slack收集器初始化成功")
+            except Exception as e:
+                logger.error(f"Slack收集器初始化失敗: {e}")
+        
+        # 初始化GitHub收集器
+        github_token = os.getenv('GITHUB_TOKEN')
+        if github_token:
+            try:
+                github_collector = GitHubCollector(github_token)
+                logger.info("GitHub收集器初始化成功")
+            except Exception as e:
+                logger.error(f"GitHub收集器初始化失敗: {e}")
+        
+        # 初始化Google Calendar收集器
+        calendar_service_account_file = os.getenv('GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE')
+        if calendar_service_account_file:
+            try:
+                from src.collectors.google_calendar_collector import GoogleCalendarCollector
+                calendar_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
+                calendar_collector = GoogleCalendarCollector(calendar_service_account_file, calendar_id)
+                logger.info("Google Calendar收集器初始化成功")
+            except Exception as e:
+                logger.error(f"Google Calendar收集器初始化失敗: {e}")
+        
+        # 收集Slack數據以建立用戶映射
+        if slack_collector:
+            try:
+                logger.info("開始收集Slack數據以建立用戶映射...")
+                # 收集最近90天的數據
+                slack_messages = slack_collector.collect_bot_channels(days_back=90)
+                logger.info(f"Slack數據收集完成，共 {len(slack_messages)} 條訊息")
+                
+                # 將Slack數據保存到數據庫
+                if slack_messages:
+                    from src.collectors.data_merger import DataMerger
+                    from src.storage.postgres_storage import PostgreSQLStorage
+                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    
+                    logger.info("開始處理Slack數據並保存到數據庫...")
+                    data_merger = DataMerger()
+                    slack_records = data_merger.merge_slack_data(slack_messages)
+                    
+                    # 生成嵌入並保存到數據庫
+                    db_storage = PostgreSQLStorage()
+                    embedding_generator = GeminiEmbeddingGenerator()
+                    
+                    processed_count = 0
+                    for record in slack_records:
+                        try:
+                            # 生成嵌入
+                            embedding = embedding_generator.generate_embedding(record.content)
+                            record.embedding = embedding
+                            
+                            # 保存到數據庫
+                            db_storage.insert_record(record)
+                            processed_count += 1
+                            
+                            if processed_count % 10 == 0:
+                                logger.info(f"已處理 {processed_count}/{len(slack_records)} 條Slack記錄")
+                                
+                        except Exception as e:
+                            logger.error(f"處理Slack記錄失敗: {e}")
+                    
+                    logger.info(f"Slack數據保存完成，共處理 {processed_count} 條記錄")
+                
+            except Exception as e:
+                logger.error(f"Slack數據收集失敗: {e}")
+        
+        # 收集GitHub數據
+        if github_collector:
+            try:
+                logger.info("開始收集GitHub數據...")
+                github_data = github_collector.collect_all_repositories(days_back=90)
+                logger.info(f"GitHub數據收集完成")
+                
+                # 將GitHub數據保存到數據庫
+                if github_data:
+                    from src.collectors.data_merger import DataMerger
+                    from src.storage.postgres_storage import PostgreSQLStorage
+                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    
+                    logger.info("開始處理GitHub數據並保存到數據庫...")
+                    data_merger = DataMerger()
+                    github_records = data_merger.merge_github_data(
+                        github_data.get('issues', []),
+                        github_data.get('prs', []),
+                        github_data.get('commits', []),
+                        github_data.get('files', [])
+                    )
+                    
+                    # 生成嵌入並保存到數據庫
+                    db_storage = PostgreSQLStorage()
+                    embedding_generator = GeminiEmbeddingGenerator()
+                    
+                    processed_count = 0
+                    for record in github_records:
+                        try:
+                            # 生成嵌入
+                            embedding = embedding_generator.generate_embedding(record.content)
+                            record.embedding = embedding
+                            
+                            # 保存到數據庫
+                            db_storage.insert_record(record)
+                            processed_count += 1
+                            
+                            if processed_count % 10 == 0:
+                                logger.info(f"已處理 {processed_count}/{len(github_records)} 條GitHub記錄")
+                                
+                        except Exception as e:
+                            logger.error(f"處理GitHub記錄失敗: {e}")
+                    
+                    logger.info(f"GitHub數據保存完成，共處理 {processed_count} 條記錄")
+                
+            except Exception as e:
+                logger.error(f"GitHub數據收集失敗: {e}")
+        
+        # 收集Google Calendar數據
+        if 'calendar_collector' in locals():
+            try:
+                logger.info("開始收集Google Calendar數據...")
+                calendar_data = calendar_collector.collect_all_calendars(days_back=90)
+                logger.info(f"Google Calendar數據收集完成")
+                
+                # 將Calendar數據保存到數據庫
+                if calendar_data.get('events'):
+                    from src.collectors.data_merger import DataMerger
+                    from src.storage.postgres_storage import PostgreSQLStorage
+                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    
+                    logger.info("開始處理Google Calendar數據並保存到數據庫...")
+                    data_merger = DataMerger()
+                    calendar_records = data_merger.merge_google_calendar_data(calendar_data['events'])
+                    
+                    # 生成嵌入並保存到數據庫
+                    db_storage = PostgreSQLStorage()
+                    embedding_generator = GeminiEmbeddingGenerator()
+                    
+                    processed_count = 0
+                    for record in calendar_records:
+                        try:
+                            # 生成嵌入
+                            embedding = embedding_generator.generate_embedding(record.content)
+                            record.embedding = embedding
+                            
+                            # 保存到數據庫
+                            db_storage.insert_record(record)
+                            processed_count += 1
+                            
+                            if processed_count % 10 == 0:
+                                logger.info(f"已處理 {processed_count}/{len(calendar_records)} 條Calendar記錄")
+                                
+                        except Exception as e:
+                            logger.error(f"處理Calendar記錄失敗: {e}")
+                    
+                    logger.info(f"Google Calendar數據保存完成，共處理 {processed_count} 條記錄")
+                
+                # 保存日曆信息到數據庫
+                if calendar_data.get('calendars'):
+                    calendar_collector.save_calendars_to_db(calendar_data['calendars'])
+                
+            except Exception as e:
+                logger.error(f"Google Calendar數據收集失敗: {e}")
+        
+        logger.info("初始數據收集完成")
+        
+    except Exception as e:
+        logger.error(f"初始數據收集過程中發生錯誤: {e}")
 
 @app.get("/")
 async def root():

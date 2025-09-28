@@ -84,6 +84,9 @@ services:
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-admin123}
+      - GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE=/app/config/google-service-account.json
+      - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID:-primary}
+      - GOOGLE_CALENDAR_SCOPES=${GOOGLE_CALENDAR_SCOPES:-https://www.googleapis.com/auth/calendar.readonly}
     volumes:
       - ./src:/app/src
       - ./config:/app/config
@@ -97,8 +100,6 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-        echo '🚀 開始初始化資料收集...' &&
-        python scripts/init_data_collection.py || echo '⚠️ 初始化失敗，但繼續啟動服務...' &&
         echo '✅ 啟動 API 服務...' &&
         python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
       "
