@@ -11,6 +11,7 @@
 config/settings.py
 config/settings_dev.py
 config/settings_prod.py
+config/google-service-account.json
 **/secrets.json
 **/credentials.json
 **/api_keys.txt
