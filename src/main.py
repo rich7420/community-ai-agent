@@ -115,10 +115,14 @@ async def check_if_initial_collection_needed() -> bool:
         result = cur.fetchone()
         data_count = result['count'] if result else 0
         
-        # 檢查是否有初始化標記
-        cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
-        result = cur.fetchone()
-        flag_count = result['count'] if result else 0
+        # 檢查是否有初始化標記（如果表存在）
+        try:
+            cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
+            result = cur.fetchone()
+            flag_count = result['count'] if result else 0
+        except Exception:
+            # 如果 system_flags 表不存在，則 flag_count = 0
+            flag_count = 0
         
         cur.close()
         return_db_connection(conn)
@@ -170,10 +174,14 @@ async def initial_data_collection():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 檢查是否已有用戶映射數據
-        cur.execute("SELECT COUNT(*) as count FROM user_name_mappings")
-        result = cur.fetchone()
-        user_mapping_count = result['count'] if result else 0
+        # 檢查是否已有用戶映射數據（如果表存在）
+        try:
+            cur.execute("SELECT COUNT(*) as count FROM user_name_mappings")
+            result = cur.fetchone()
+            user_mapping_count = result['count'] if result else 0
+        except Exception:
+            # 如果 user_name_mappings 表不存在，則 user_mapping_count = 0
+            user_mapping_count = 0
         
         cur.close()
         return_db_connection(conn)
