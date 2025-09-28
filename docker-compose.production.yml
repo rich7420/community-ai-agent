@@ -4,6 +4,7 @@ services:
     build:
       context: ./docker/postgres
       dockerfile: Dockerfile
+    container_name: community-ai-postgres-prod
     environment:
       POSTGRES_DB: community_ai
       POSTGRES_USER: postgres
@@ -21,6 +22,7 @@ services:
   # Redis Cache
   redis:
     image: redis:7-alpine
+    container_name: community-ai-redis-prod
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
@@ -34,6 +36,7 @@ services:
   # MinIO Object Storage
   minio:
     image: minio/minio:latest
+    container_name: community-ai-minio-prod
     environment:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
@@ -52,8 +55,63 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: community-ai-app-prod
     ports:
       - "8000:8000"
+    env_file: [.env]
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=community_ai
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/community_ai
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE=/app/config/google-service-account.json
+      - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID}
+      - GOOGLE_CALENDAR_SCOPES=${GOOGLE_CALENDAR_SCOPES}
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./scripts:/app/scripts
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    command: >
+      sh -c "
+        echo '開始初始化資料收集...' &&
+        python scripts/init_data_collection.py || echo '⚠️ 初始化失敗，但繼續啟動服務...' &&
+        echo '啟動 API 服務...' &&
+        python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+      "
+    networks: [community-ai-network]
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend-react
+      dockerfile: Dockerfile
+    container_name: community-ai-frontend-prod
+    environment:
+      - VITE_API_URL=${API_URL}
+      - VITE_FRONTEND_URL=${FRONTEND_URL}
+    depends_on: [app]
+    networks: [community-ai-network]
+
+  # Scheduler (cron jobs)
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: community-ai-scheduler-prod
     env_file: [.env]
     environment:
       - POSTGRES_HOST=postgres
@@ -77,36 +135,6 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       minio: {condition: service_healthy}
-    command: >
-      sh -c "
-        echo '開始初始化資料收集...' &&
-        python scripts/init_data_collection.py || echo '⚠️ 初始化失敗，但繼續啟動服務...' &&
-        echo '啟動 API 服務...' &&
-        python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-      "
-    networks: [community-ai-network]
-
-  # Frontend React App
-  frontend:
-    build:
-      context: ./frontend-react
-      dockerfile: Dockerfile
-    environment:
-      - VITE_API_URL=${API_URL}
-      - VITE_FRONTEND_URL=${FRONTEND_URL}
-    depends_on: [app]
-    networks: [community-ai-network]
-
-  # Scheduler (cron jobs)
-  scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file: [.env]
-    depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
-      minio: {condition: service_healthy}
     command: sh -c "cd /app/src/scheduler && python main.py"
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from scheduler.cron_jobs import CronJobScheduler; print('Scheduler is running')"]
@@ -119,6 +147,7 @@ services:
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
+    container_name: community-ai-nginx-prod
     restart: unless-stopped
     ports:
       - "80:80"
