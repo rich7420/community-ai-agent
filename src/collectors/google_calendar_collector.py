@@ -14,8 +14,8 @@ import google.auth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from src.storage.connection_pool import get_db_connection, return_db_connection
-from src.utils.logging_config import structured_logger
+from storage.connection_pool import get_db_connection, return_db_connection
+from utils.logging_config import structured_logger
 
 logger = logging.getLogger(__name__)
 

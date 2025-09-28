@@ -9,7 +9,7 @@ from datetime import datetime
 import threading
 import queue
 import time
-from src.ai.prompts import CommunityPrompts
+from ai.prompts import CommunityPrompts
 
 logger = logging.getLogger(__name__)
 

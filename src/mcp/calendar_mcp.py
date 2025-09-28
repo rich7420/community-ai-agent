@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from src.storage.connection_pool import get_db_connection, return_db_connection
+from storage.connection_pool import get_db_connection, return_db_connection
 from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
@@ -395,7 +395,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from src.storage.connection_pool import get_db_connection, return_db_connection
+from storage.connection_pool import get_db_connection, return_db_connection
 from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)

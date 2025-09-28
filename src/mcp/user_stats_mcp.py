@@ -83,7 +83,7 @@ class UserStatsMCP:
                 anonymized_id, message_count, reply_count, last_activity, channel_count, channels = row
                 
                 # 嘗試獲取真實用戶名稱
-                from src.utils.pii_filter import PIIFilter
+                from utils.pii_filter import PIIFilter
                 pii_filter = PIIFilter()
                 display_name = pii_filter._get_display_name_by_original_id(anonymized_id, platform)
                 user_name = display_name if display_name else anonymized_id

@@ -14,12 +14,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import AI components
-from src.ai.qa_system import CommunityQASystem
-from src.ai.rag_system import CommunityRAGSystem
-from src.ai.google_llm import GoogleLLM
-from src.api.health_endpoint import router as health_router
-from src.streaming.async_generator import AsyncAnswerGenerator, get_streaming
-from src.cache.answer_cache import get_cache
+from ai.qa_system import CommunityQASystem
+from ai.rag_system import CommunityRAGSystem
+from ai.google_llm import GoogleLLM
+from api.health_endpoint import router as health_router
+from streaming.async_generator import AsyncAnswerGenerator, get_streaming
+from cache.answer_cache import get_cache
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,8 +49,8 @@ qa_system: Optional[CommunityQASystem] = None
 async_generator: Optional[AsyncAnswerGenerator] = None
 
 # Import collectors for initial data collection
-from src.collectors.slack_collector import SlackCollector
-from src.collectors.github_collector import GitHubCollector
+from collectors.slack_collector import SlackCollector
+from collectors.github_collector import GitHubCollector
 
 # Pydantic models
 class QuestionRequest(BaseModel):
@@ -104,7 +104,7 @@ def get_qa_system() -> CommunityQASystem:
 async def check_if_initial_collection_needed() -> bool:
     """檢查是否需要進行初始數據收集"""
     try:
-        from src.storage.connection_pool import get_db_connection, return_db_connection
+        from storage.connection_pool import get_db_connection, return_db_connection
         from psycopg2.extras import RealDictCursor
         
         conn = get_db_connection()
@@ -164,7 +164,7 @@ async def initial_data_collection():
     """初始數據收集，建立用戶映射"""
     try:
         # 檢查是否需要進行初始收集
-        from src.storage.connection_pool import get_db_connection, return_db_connection
+        from storage.connection_pool import get_db_connection, return_db_connection
         from psycopg2.extras import RealDictCursor
         
         conn = get_db_connection()
@@ -209,7 +209,7 @@ async def initial_data_collection():
         calendar_service_account_file = os.getenv('GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE')
         if calendar_service_account_file:
             try:
-                from src.collectors.google_calendar_collector import GoogleCalendarCollector
+                from collectors.google_calendar_collector import GoogleCalendarCollector
                 calendar_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
                 calendar_collector = GoogleCalendarCollector(calendar_service_account_file, calendar_id)
                 logger.info("Google Calendar收集器初始化成功")
@@ -226,9 +226,9 @@ async def initial_data_collection():
                 
                 # 將Slack數據保存到數據庫
                 if slack_messages:
-                    from src.collectors.data_merger import DataMerger
-                    from src.storage.postgres_storage import PostgreSQLStorage
-                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    from collectors.data_merger import DataMerger
+                    from storage.postgres_storage import PostgreSQLStorage
+                    from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
                     
                     logger.info("開始處理Slack數據並保存到數據庫...")
                     data_merger = DataMerger()
@@ -269,9 +269,9 @@ async def initial_data_collection():
                 
                 # 將GitHub數據保存到數據庫
                 if github_data:
-                    from src.collectors.data_merger import DataMerger
-                    from src.storage.postgres_storage import PostgreSQLStorage
-                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    from collectors.data_merger import DataMerger
+                    from storage.postgres_storage import PostgreSQLStorage
+                    from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
                     
                     logger.info("開始處理GitHub數據並保存到數據庫...")
                     data_merger = DataMerger()
@@ -317,9 +317,9 @@ async def initial_data_collection():
                 
                 # 將Calendar數據保存到數據庫
                 if calendar_data.get('events'):
-                    from src.collectors.data_merger import DataMerger
-                    from src.storage.postgres_storage import PostgreSQLStorage
-                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    from collectors.data_merger import DataMerger
+                    from storage.postgres_storage import PostgreSQLStorage
+                    from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
                     
                     logger.info("開始處理Google Calendar數據並保存到數據庫...")
                     data_merger = DataMerger()
@@ -366,7 +366,7 @@ async def initial_data_collection():
 async def set_initial_collection_completed():
     """設置初始收集完成標記"""
     try:
-        from src.storage.connection_pool import get_db_connection, return_db_connection
+        from storage.connection_pool import get_db_connection, return_db_connection
         
         conn = get_db_connection()
         cur = conn.cursor()

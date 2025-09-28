@@ -4,9 +4,9 @@ Health check API endpoint
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 import logging
-from src.monitoring.health_check import HealthChecker
-from src.monitoring.metrics import MetricsCollector
-from src.storage.postgres_storage import PostgreSQLStorage
+from monitoring.health_check import HealthChecker
+from monitoring.metrics import MetricsCollector
+from storage.postgres_storage import PostgreSQLStorage
 
 logger = logging.getLogger(__name__)
 

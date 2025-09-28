@@ -313,7 +313,7 @@ class PIIFilter:
         """
         try:
             # 直接查詢數據庫獲取顯示名稱
-            from src.storage.connection_pool import get_db_connection, return_db_connection
+            from storage.connection_pool import get_db_connection, return_db_connection
             from psycopg2.extras import RealDictCursor
             
             conn = get_db_connection()
@@ -633,7 +633,7 @@ class PIIFilter:
         """
         try:
             # 直接查詢數據庫獲取顯示名稱
-            from src.storage.connection_pool import get_db_connection, return_db_connection
+            from storage.connection_pool import get_db_connection, return_db_connection
             from psycopg2.extras import RealDictCursor
             
             conn = get_db_connection()

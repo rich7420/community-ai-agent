@@ -13,10 +13,10 @@ from sqlalchemy.orm import sessionmaker
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from src.utils.logging_config import structured_logger
-from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
-from src.storage.postgres_storage import PostgreSQLStorage
-from src.utils.project_description_manager import ProjectDescriptionManager
+from utils.logging_config import structured_logger
+from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+from storage.postgres_storage import PostgreSQLStorage
+from utils.project_description_manager import ProjectDescriptionManager
 
 logger = logging.getLogger(__name__)
 
@@ -350,7 +350,7 @@ class CommunityRAGSystem:
             用戶活躍度分析結果
         """
         try:
-            from src.storage.connection_pool import get_db_connection, return_db_connection
+            from storage.connection_pool import get_db_connection, return_db_connection
             from psycopg2.extras import RealDictCursor
             import time
             

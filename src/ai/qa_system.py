@@ -11,13 +11,13 @@ from langchain.schema import BaseMessage, HumanMessage, SystemMessage
 from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.base import BaseCallbackHandler
 
-from src.ai.google_llm import GoogleLLM
-from src.ai.rag_system import CommunityRAGSystem
-from src.ai.prompts import CommunityPrompts
-from src.utils.logging_config import structured_logger
-from src.mcp.user_stats_mcp import get_slack_user_stats, get_slack_activity_summary
-from src.mcp.calendar_mcp import CalendarMCP
-from src.cache.answer_cache import get_cache
+from ai.google_llm import GoogleLLM
+from ai.rag_system import CommunityRAGSystem
+from ai.prompts import CommunityPrompts
+from utils.logging_config import structured_logger
+from mcp.user_stats_mcp import get_slack_user_stats, get_slack_activity_summary
+from mcp.calendar_mcp import CalendarMCP
+from cache.answer_cache import get_cache
 
 logger = logging.getLogger(__name__)
 
