@@ -100,6 +100,13 @@ else
     echo "❌ Scheduler 未正常運行"
     echo "Scheduler 日誌:"
     docker logs community-ai-scheduler-prod --tail=20
+    echo ""
+    echo "🔧 嘗試修復 Scheduler..."
+    echo "重新啟動 Scheduler 服務..."
+    docker-compose -f docker-compose.production.yml restart scheduler
+    sleep 10
+    echo "再次檢查 Scheduler..."
+    docker logs community-ai-scheduler-prod --tail=10
 fi
 
 # 檢查 Nginx

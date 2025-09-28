@@ -6,7 +6,7 @@ import os
 import sys
 import logging
 from dotenv import load_dotenv
-from cron_jobs import CronJobScheduler
+from scheduler.cron_jobs import CronJobScheduler
 
 # 載入環境變數
 load_dotenv()

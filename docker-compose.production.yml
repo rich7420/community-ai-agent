@@ -136,7 +136,7 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       minio: {condition: service_healthy}
-    command: sh -c "cd /app/src/scheduler && PYTHONPATH=/app/src python main.py"
+    command: sh -c "cd /app/src && python scheduler/main.py"
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from scheduler.cron_jobs import CronJobScheduler; print('Scheduler is running')"]
       interval: 30s
