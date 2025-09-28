@@ -18,6 +18,7 @@ sys.path.append('/app/src')
 from utils.logging_config import structured_logger
 from collectors.slack_collector import SlackCollector
 from collectors.github_collector import GitHubCollector
+from collectors.google_calendar_collector import GoogleCalendarCollector
 from collectors.incremental_collector import IncrementalCollector
 from collectors.data_merger import DataMerger
 from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
@@ -33,6 +34,7 @@ class CronJobScheduler:
         # 初始化組件
         self.slack_collector = None
         self.github_collector = None
+        self.calendar_collector = None
         self.incremental_collector = IncrementalCollector()
         self.data_merger = DataMerger()
         self.embedding_generator = GeminiEmbeddingGenerator()
@@ -80,6 +82,15 @@ class CronJobScheduler:
             else:
                 self.logger.warning("GitHub收集器未配置或使用預設值，跳過初始化")
             
+            # 初始化Google Calendar收集器
+            calendar_service_account = os.getenv('GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE')
+            calendar_id = os.getenv('GOOGLE_CALENDAR_ID')
+            if calendar_service_account and calendar_id and not calendar_service_account.startswith('your-'):
+                self.calendar_collector = GoogleCalendarCollector()
+                self.logger.info("Google Calendar收集器初始化成功")
+            else:
+                self.logger.warning("Google Calendar收集器未配置或使用預設值，跳過初始化")
+            
             self.logger.info("收集器初始化完成")
             
         except Exception as e:
@@ -111,7 +122,7 @@ class CronJobScheduler:
             self.job_status['daily_collection']['error'] = None
             
             # 初始化收集器和存儲
-            if not self.slack_collector and not self.github_collector:
+            if not self.slack_collector and not self.github_collector and not self.calendar_collector:
                 self.initialize_collectors()
             
             if not self.postgres_storage or not self.minio_storage:
@@ -144,6 +155,17 @@ class CronJobScheduler:
                     self.logger.info(f"GitHub資料收集完成，共 {len(github_records)} 條記錄")
                 except Exception as e:
                     self.logger.error(f"GitHub資料收集失敗: {e}")
+            
+            # 收集Google Calendar資料
+            if self.calendar_collector:
+                try:
+                    # 收集過去180天到未來60天的事件
+                    calendar_events = self.calendar_collector.collect_events(days_back=180)
+                    calendar_records = self.data_merger.merge_google_calendar_data(calendar_events)
+                    all_data.extend(calendar_records)
+                    self.logger.info(f"Google Calendar資料收集完成，共 {len(calendar_records)} 條記錄")
+                except Exception as e:
+                    self.logger.error(f"Google Calendar資料收集失敗: {e}")
             
             # 生成嵌入和存儲
             if all_data:
@@ -190,7 +212,8 @@ class CronJobScheduler:
                 metrics={
                     'total_records': len(all_data),
                     'slack_records': len([r for r in all_data if r.platform == 'slack']),
-                    'github_records': len([r for r in all_data if r.platform == 'github'])
+                    'github_records': len([r for r in all_data if r.platform == 'github']),
+                    'calendar_records': len([r for r in all_data if r.platform == 'google_calendar'])
                 }
             )
             
