@@ -15,6 +15,7 @@ from ai.google_llm import GoogleLLM
 from ai.rag_system import CommunityRAGSystem
 from ai.prompts import CommunityPrompts
 from utils.user_display_helper import UserDisplayHelper
+from utils.logging_config import structured_logger
 from mcp.user_stats_mcp import get_slack_user_stats, get_slack_activity_summary
 from mcp.calendar_mcp_fixed import CalendarMCPFixed
 from cache.answer_cache import get_cache
