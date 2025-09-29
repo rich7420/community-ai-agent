@@ -132,18 +132,57 @@ async def check_if_initial_collection_needed() -> bool:
         cur.close()
         return_db_connection(conn)
         
-        # 如果有 Slack 數據，則不需要重新收集 Slack，但仍需要收集其他數據
-        if slack_data_count > 0:
-            logger.info(f"檢測到 {slack_data_count} 條 Slack 數據，將跳過 Slack 收集")
-            return True  # 仍需要收集 GitHub 和 Calendar
+        # 如果有初始化標記，表示已經完成過初始收集，不需要重複收集
+        if flag_count > 0:
+            logger.info("檢測到初始化完成標記，跳過數據收集")
+            return False
         
         # 如果沒有數據且沒有初始化標記，則需要收集
-        return data_count == 0 and flag_count == 0
+        if data_count == 0:
+            logger.info("沒有檢測到任何數據，需要進行初始收集")
+            return True
+        
+        # 如果有數據但沒有初始化標記，可能是舊的數據，需要設置標記
+        logger.info(f"檢測到 {data_count} 條現有數據，但沒有初始化標記，將設置標記並跳過收集")
+        return False
         
     except Exception as e:
         logger.error(f"檢查初始收集狀態失敗: {e}")
         # 如果檢查失敗，為了安全起見，不進行收集
         return False
+
+async def check_and_set_initial_flag_if_needed():
+    """檢查並設置初始化標記（如果有數據但沒有標記）"""
+    try:
+        from storage.connection_pool import get_db_connection, return_db_connection
+        from psycopg2.extras import RealDictCursor
+        
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 檢查是否已有數據
+        cur.execute("SELECT COUNT(*) as count FROM community_data")
+        result = cur.fetchone()
+        data_count = result['count'] if result else 0
+        
+        # 檢查是否有初始化標記
+        try:
+            cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
+            result = cur.fetchone()
+            flag_count = result['count'] if result else 0
+        except Exception:
+            flag_count = 0
+        
+        cur.close()
+        return_db_connection(conn)
+        
+        # 如果有數據但沒有標記，設置標記
+        if data_count > 0 and flag_count == 0:
+            logger.info(f"檢測到 {data_count} 條現有數據但沒有初始化標記，設置標記")
+            await set_initial_collection_completed()
+        
+    except Exception as e:
+        logger.error(f"檢查並設置初始化標記失敗: {e}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -159,6 +198,8 @@ async def startup_event():
         asyncio.create_task(background_data_collection())
         logger.info("後台數據收集任務已啟動")
     else:
+        # 檢查是否需要設置初始化標記（有數據但沒有標記的情況）
+        await check_and_set_initial_flag_if_needed()
         logger.info("跳過初始數據收集，系統已初始化")
 
 async def background_data_collection():
