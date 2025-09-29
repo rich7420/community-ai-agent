@@ -121,7 +121,46 @@ class UserStatsMCP:
             conn = get_db_connection()
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-            # 查詢用戶映射表獲取顯示名稱
+            # 優先從社區數據中獲取用戶名稱（因為映射表可能為空）
+            cur.execute("""
+                SELECT metadata->>'real_name' as real_name,
+                       metadata->>'display_name' as display_name,
+                       metadata->>'user_name' as user_name,
+                       metadata->>'name' as name
+                FROM community_data 
+                WHERE author_anon = %s AND platform = %s
+                AND (metadata->>'real_name' IS NOT NULL 
+                     OR metadata->>'display_name' IS NOT NULL 
+                     OR metadata->>'user_name' IS NOT NULL
+                     OR metadata->>'name' IS NOT NULL)
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """, (anonymized_id, platform))
+            
+            result = cur.fetchone()
+            cur.close()
+            return_db_connection(conn)
+            
+            if result:
+                # 優先使用 real_name，其次使用 display_name，然後 user_name，最後 name
+                real_name = result['real_name']
+                display_name = result['display_name']
+                user_name = result['user_name']
+                name = result['name']
+                
+                if real_name and real_name.strip():
+                    return real_name.strip()
+                elif display_name and display_name.strip():
+                    return display_name.strip()
+                elif user_name and user_name.strip():
+                    return user_name.strip()
+                elif name and name.strip():
+                    return name.strip()
+            
+            # 如果社區數據中沒有找到，嘗試查詢用戶映射表
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
             cur.execute("""
                 SELECT display_name, real_name, aliases
                 FROM user_name_mappings 
@@ -136,41 +175,13 @@ class UserStatsMCP:
             
             if result:
                 # 優先使用 display_name，其次使用 real_name
-                display_name = result['display_name'] or result['real_name']
-                if display_name:
-                    return display_name
-            
-            # 如果沒有找到映射，嘗試從社區數據中獲取
-            conn = get_db_connection()
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cur.execute("""
-                SELECT metadata->>'real_name' as real_name,
-                       metadata->>'display_name' as display_name,
-                       metadata->>'user_name' as user_name
-                FROM community_data 
-                WHERE author_anon = %s AND platform = %s
-                AND (metadata->>'real_name' IS NOT NULL OR metadata->>'display_name' IS NOT NULL)
-                ORDER BY timestamp DESC
-                LIMIT 1
-            """, (anonymized_id, platform))
-            
-            result = cur.fetchone()
-            cur.close()
-            return_db_connection(conn)
-            
-            if result:
-                # 優先使用 real_name，其次使用 display_name，最後使用 user_name
-                real_name = result['real_name']
                 display_name = result['display_name']
-                user_name = result['user_name']
+                real_name = result['real_name']
                 
-                if real_name:
-                    return real_name
-                elif display_name:
-                    return display_name
-                elif user_name:
-                    return user_name
+                if display_name and display_name.strip():
+                    return display_name.strip()
+                elif real_name and real_name.strip():
+                    return real_name.strip()
             
             # 如果都找不到，返回匿名ID
             return anonymized_id

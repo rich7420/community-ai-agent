@@ -16,7 +16,7 @@ from ai.rag_system import CommunityRAGSystem
 from ai.prompts import CommunityPrompts
 from utils.logging_config import structured_logger
 from mcp.user_stats_mcp import get_slack_user_stats, get_slack_activity_summary
-from mcp.calendar_mcp import CalendarMCP
+from mcp.calendar_mcp_fixed import CalendarMCPFixed
 from cache.answer_cache import get_cache
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class CommunityQASystem:
         self.cache = get_cache()
         
         # Initialize MCP services
-        self.calendar_mcp = CalendarMCP()
+        self.calendar_mcp = CalendarMCPFixed()
         
         # Initialize prompt templates
         self.qa_prompt = CommunityPrompts.get_qa_prompt()
