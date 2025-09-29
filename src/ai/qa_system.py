@@ -257,17 +257,20 @@ class CommunityQASystem:
         return False
     
     def _handle_user_activity_query(self, question: str) -> Dict[str, Any]:
-        """處理用戶活躍度查詢 - 優化版本"""
+        """處理用戶活躍度查詢 - 改進版本，提供詳細的用戶分析"""
         try:
             import re
             import signal
             import time
             
-            # 提取用戶名稱
+            # 提取用戶名稱 - 改進的模式匹配
             user_name_patterns = [
-                r'([^？?]+)(?:是誰|活躍|討論|參與)',
-                r'(?:誰是|介紹|分析)\s*([^？?]+)',
-                r'([^？?]+)\s*(?:的活躍度|的討論|的參與)'
+                r'([^？?]+)(?:是誰|活躍|討論|參與|發過什麼|的訊息|的內容)',
+                r'(?:誰是|介紹|分析|查詢)\s*([^？?]+)',
+                r'([^？?]+)\s*(?:的活躍度|的討論|的參與|的訊息|的內容)',
+                r'用戶\s*([^？?]+)',
+                r'([^？?]+)\s*發過什麼',
+                r'([^？?]+)\s*的訊息內容'
             ]
             
             user_name = None
@@ -275,28 +278,31 @@ class CommunityQASystem:
                 match = re.search(pattern, question)
                 if match:
                     user_name = match.group(1).strip()
-                    break
+                    # 清理用戶名稱
+                    user_name = re.sub(r'[的誰是？?]', '', user_name).strip()
+                    if user_name:
+                        break
             
             if not user_name:
                 return {
                     "question": question,
-                    "answer": "抱歉，我無法從您的問題中識別出要查詢的用戶名稱。請提供更具體的用戶名稱，例如：'劉哲佑(Jason)是誰？'",
+                    "answer": "抱歉，我無法從您的問題中識別出要查詢的用戶名稱。請提供更具體的用戶名稱，例如：'Jesse是誰？' 或 'Jesse發過什麼訊息？'",
                     "timestamp": datetime.now().isoformat(),
                     "sources_used": 0,
                     "context_length": 0
                 }
             
-            # 設置查詢超時（10秒）
+            # 設置查詢超時（15秒）
             def timeout_handler(signum, frame):
                 raise TimeoutError("用戶查詢超時")
             
             signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(10)  # 10秒超時
+            signal.alarm(15)  # 15秒超時
             
             try:
                 start_time = time.time()
-                # 使用RAG系統分析用戶活躍度
-                activity_analysis = self.rag_system.get_user_activity_analysis(user_name)
+                # 使用改進的用戶分析
+                user_analysis = self._get_detailed_user_analysis(user_name)
                 query_time = time.time() - start_time
                 
                 signal.alarm(0)  # 取消超時
@@ -312,7 +318,7 @@ class CommunityQASystem:
                     "timeout": True
                 }
             
-            if not activity_analysis.get("user_found", False):
+            if not user_analysis.get("user_found", False):
                 return {
                     "question": question,
                     "answer": f"抱歉，我沒有找到用戶 '{user_name}' 的相關信息。請確認用戶名稱是否正確。",
@@ -322,54 +328,8 @@ class CommunityQASystem:
                     "query_time": query_time
                 }
             
-            if not activity_analysis.get("analysis_available", False):
-                return {
-                    "question": question,
-                    "answer": activity_analysis.get("message", "無法進行活躍度分析"),
-                    "timestamp": datetime.now().isoformat(),
-                    "sources_used": 0,
-                    "context_length": 0
-                }
-            
-            # 生成活躍度分析報告
-            display_name = activity_analysis["display_name"]
-            total_messages = activity_analysis["total_messages"]
-            active_channels = activity_analysis["active_channels"]
-            thread_replies = activity_analysis["thread_replies"]
-            main_messages = activity_analysis["main_messages"]
-            
-            # 構建回答
-            answer_parts = [
-                f"**{display_name}** 是源來適你社群的活躍成員！",
-                f"",
-                f"📊 **活躍度統計：**",
-                f"- 總訊息數：{total_messages} 條",
-                f"- 活躍頻道：{active_channels} 個",
-                f"- 主訊息：{main_messages} 條",
-                f"- 線程回覆：{thread_replies} 條",
-                f""
-            ]
-            
-            # 添加頻道活躍度
-            if activity_analysis.get("channel_activity"):
-                answer_parts.append("🏆 **最活躍頻道：**")
-                for i, channel in enumerate(activity_analysis["channel_activity"][:5], 1):
-                    channel_name = channel.get("channel_name", "未知頻道")
-                    message_count = channel["message_count"]
-                    answer_parts.append(f"{i}. #{channel_name}: {message_count} 條訊息")
-                answer_parts.append("")
-            
-            # 添加最近活動摘要
-            if activity_analysis.get("recent_activity"):
-                recent_activity = activity_analysis["recent_activity"]
-                answer_parts.extend([
-                    "💬 **最近討論內容摘要：**",
-                    f"{recent_activity}",
-                    f"",
-                    f"*以上是基於 {display_name} 最近50條訊息的內容摘要*"
-                ])
-            
-            answer = "\n".join(answer_parts)
+            # 生成詳細的用戶分析報告
+            answer = self._generate_detailed_user_report(user_analysis)
             
             return {
                 "question": question,
@@ -377,7 +337,7 @@ class CommunityQASystem:
                 "timestamp": datetime.now().isoformat(),
                 "sources_used": 1,
                 "context_length": len(answer),
-                "user_activity_analysis": activity_analysis
+                "user_analysis": user_analysis
             }
             
         except Exception as e:
@@ -389,6 +349,241 @@ class CommunityQASystem:
                 "sources_used": 0,
                 "context_length": 0
             }
+    
+    def _get_detailed_user_analysis(self, user_name: str) -> Dict[str, Any]:
+        """獲取詳細的用戶分析信息"""
+        try:
+            from src.storage.connection_pool import get_db_connection, return_db_connection
+            from psycopg2.extras import RealDictCursor
+            import time
+            
+            start_time = time.time()
+            
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查找用戶映射 - 選擇有最多數據的用戶
+            cur.execute("""
+                WITH user_candidates AS (
+                    SELECT 
+                        unm.anonymized_id, 
+                        unm.display_name, 
+                        unm.real_name, 
+                        unm.aliases, 
+                        unm.group_terms,
+                        COUNT(cd.id) as message_count
+                    FROM user_name_mappings unm
+                    LEFT JOIN community_data cd ON cd.author_anon = unm.anonymized_id AND cd.platform = 'slack'
+                    WHERE unm.display_name ILIKE %s OR unm.real_name ILIKE %s 
+                       OR %s = ANY(unm.aliases) OR %s = ANY(unm.group_terms)
+                    GROUP BY unm.anonymized_id, unm.display_name, unm.real_name, unm.aliases, unm.group_terms
+                    ORDER BY message_count DESC
+                    LIMIT 1
+                )
+                SELECT anonymized_id, display_name, real_name, aliases, group_terms
+                FROM user_candidates
+            """, (f"%{user_name}%", f"%{user_name}%", user_name, user_name))
+            
+            user_result = cur.fetchone()
+            if not user_result:
+                cur.close()
+                return_db_connection(conn)
+                return {
+                    "user_found": False,
+                    "message": f"未找到用戶 {user_name}",
+                    "query_time": time.time() - start_time
+                }
+            
+            anonymized_id = user_result['anonymized_id']
+            display_name = user_result['display_name']
+            real_name = user_result['real_name']
+            
+            # 獲取用戶統計信息
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as message_count,
+                    COUNT(CASE WHEN metadata->>'thread_ts' IS NOT NULL THEN 1 END) as reply_count,
+                    COUNT(CASE WHEN metadata->>'thread_ts' IS NULL OR metadata->>'thread_ts' = '' THEN 1 END) as main_message_count,
+                    COUNT(DISTINCT metadata->>'channel') as channel_count,
+                    MIN(timestamp) as first_activity,
+                    MAX(timestamp) as last_activity,
+                    COUNT(CASE WHEN metadata->>'emoji' IS NOT NULL THEN 1 END) as emoji_count
+                FROM community_data 
+                WHERE author_anon = %s AND platform = 'slack'
+            """, (anonymized_id,))
+            
+            stats = cur.fetchone()
+            
+            # 獲取頻道活躍度
+            cur.execute("""
+                SELECT 
+                    metadata->>'channel' as channel_id,
+                    metadata->>'channel_name' as channel_name,
+                    COUNT(*) as message_count
+                FROM community_data 
+                WHERE author_anon = %s AND platform = 'slack'
+                GROUP BY metadata->>'channel', metadata->>'channel_name'
+                ORDER BY message_count DESC
+                LIMIT 5
+            """, (anonymized_id,))
+            
+            channel_stats = cur.fetchall()
+            
+            # 獲取最近的訊息內容
+            cur.execute("""
+                SELECT 
+                    content,
+                    timestamp,
+                    metadata->>'channel_name' as channel_name
+                FROM community_data 
+                WHERE author_anon = %s AND platform = 'slack'
+                ORDER BY timestamp DESC
+                LIMIT 10
+            """, (anonymized_id,))
+            
+            recent_messages = cur.fetchall()
+            
+            cur.close()
+            return_db_connection(conn)
+            
+            query_time = time.time() - start_time
+            
+            return {
+                "user_found": True,
+                "display_name": display_name,
+                "real_name": real_name,
+                "anonymized_id": anonymized_id,
+                "message_count": stats['message_count'],
+                "reply_count": stats['reply_count'],
+                "main_message_count": stats['main_message_count'],
+                "channel_count": stats['channel_count'],
+                "emoji_count": stats['emoji_count'],
+                "first_activity": stats['first_activity'].isoformat() if stats['first_activity'] else None,
+                "last_activity": stats['last_activity'].isoformat() if stats['last_activity'] else None,
+                "channel_stats": [
+                    {
+                        "channel_id": ch['channel_id'],
+                        "channel_name": ch['channel_name'],
+                        "message_count": ch['message_count']
+                    } for ch in channel_stats
+                ],
+                "recent_messages": [
+                    {
+                        "content": msg['content'],
+                        "timestamp": msg['timestamp'].isoformat(),
+                        "channel_name": msg['channel_name']
+                    } for msg in recent_messages
+                ],
+                "query_time": query_time
+            }
+            
+        except Exception as e:
+            logger.error(f"獲取詳細用戶分析失敗: {e}")
+            return {
+                "user_found": False,
+                "error": str(e),
+                "query_time": time.time() - start_time if 'start_time' in locals() else 0
+            }
+    
+    def _generate_detailed_user_report(self, user_analysis: Dict[str, Any]) -> str:
+        """生成詳細的用戶分析報告"""
+        try:
+            display_name = user_analysis["display_name"]
+            real_name = user_analysis.get("real_name", display_name)
+            message_count = user_analysis["message_count"]
+            reply_count = user_analysis["reply_count"]
+            main_message_count = user_analysis["main_message_count"]
+            channel_count = user_analysis["channel_count"]
+            emoji_count = user_analysis["emoji_count"]
+            last_activity = user_analysis["last_activity"]
+            
+            # 構建詳細報告
+            report_parts = [
+                f"## 🎯 {display_name} 是誰？",
+                f"",
+                f"**{display_name}** 是Apache Local Community Taipei社群中的一個活躍成員！",
+                f""
+            ]
+            
+            # 基本統計
+            report_parts.extend([
+                f"### 📊 **基本統計**",
+                f"- **總訊息數**：{message_count} 條",
+                f"- **回覆數**：{reply_count} 次",
+                f"- **主訊息數**：{main_message_count} 條",
+                f"- **參與頻道數**：{channel_count} 個",
+                f"- **Emoji使用**：{emoji_count} 次",
+                f"- **最後活動時間**：{last_activity[:10] if last_activity else '未知'}",
+                f""
+            ])
+            
+            # 頻道活躍度
+            if user_analysis.get("channel_stats"):
+                report_parts.extend([
+                    f"### 🏆 **最活躍頻道**",
+                ])
+                for i, channel in enumerate(user_analysis["channel_stats"], 1):
+                    channel_name = channel.get("channel_name", f"頻道{channel['channel_id']}")
+                    message_count = channel["message_count"]
+                    report_parts.append(f"{i}. **#{channel_name}**：{message_count} 條訊息")
+                report_parts.append("")
+            
+            # 最近訊息內容
+            if user_analysis.get("recent_messages"):
+                report_parts.extend([
+                    f"### 💬 **最近訊息內容**",
+                ])
+                for i, msg in enumerate(user_analysis["recent_messages"][:5], 1):
+                    content = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
+                    timestamp = msg["timestamp"][:10] if msg["timestamp"] else "未知時間"
+                    channel_name = msg.get("channel_name", "未知頻道")
+                    report_parts.append(f"{i}. **[{timestamp}]** 在 #{channel_name}：")
+                    report_parts.append(f"   {content}")
+                    report_parts.append("")
+            
+            # 個性特徵分析
+            report_parts.extend([
+                f"### 🔍 **個性特徵分析**",
+            ])
+            
+            # 基於數據分析個性特徵
+            personality_traits = []
+            
+            if reply_count > main_message_count:
+                personality_traits.append("活躍的回覆者，喜歡參與討論")
+            elif main_message_count > reply_count:
+                personality_traits.append("經常發起新話題")
+            
+            if channel_count > 3:
+                personality_traits.append("參與多個頻道，社群參與度高")
+            
+            if emoji_count > message_count * 0.3:
+                personality_traits.append("喜歡使用表情符號，表達方式生動")
+            
+            if message_count > 50:
+                personality_traits.append("社群中的活躍成員")
+            elif message_count > 20:
+                personality_traits.append("中等活躍度的參與者")
+            else:
+                personality_traits.append("偶爾參與討論的成員")
+            
+            for trait in personality_traits:
+                report_parts.append(f"- {trait}")
+            
+            report_parts.extend([
+                f"",
+                f"### 📈 **活躍度排名**",
+                f"根據過去30天的數據，{display_name} 在社群中的活躍度排名需要查詢整體統計來確定。",
+                f"",
+                f"---",
+                f"*以上分析基於 {display_name} 在Slack社群中的實際活動數據*"
+            ])
+            
+            return "\n".join(report_parts)
+            
+        except Exception as e:
+            logger.error(f"生成詳細用戶報告失敗: {e}")
+            return f"抱歉，生成用戶分析報告時發生錯誤：{str(e)}"
     
     def _handle_stats_question(self, question: str) -> Dict[str, Any]:
         """處理統計類問題"""
