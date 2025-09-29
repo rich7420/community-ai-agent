@@ -348,7 +348,19 @@ class GoogleCalendarCollector:
             # 如果沒有找到日曆，嘗試使用 primary 日曆
             if not calendars:
                 self.logger.warning("沒有找到任何日曆，嘗試使用 primary 日曆")
-                calendars = [{'id': 'primary', 'name': 'Primary Calendar', 'description': 'Default calendar'}]
+                calendars = [{
+                    'id': 'primary', 
+                    'name': 'Primary Calendar', 
+                    'description': 'Default calendar',
+                    'timezone': 'UTC',
+                    'access_role': 'owner',
+                    'is_primary': True,
+                    'is_selected': True,
+                    'color_id': '',
+                    'background_color': '',
+                    'foreground_color': '',
+                    'metadata': {}
+                }]
                 result['calendars'] = calendars
             
             # 收集主要日曆的事件
@@ -435,6 +447,21 @@ class GoogleCalendarCollector:
             cur = conn.cursor()
             
             for calendar in calendars:
+                # 確保所有必要欄位都存在
+                calendar_data = {
+                    'id': calendar.get('id', ''),
+                    'name': calendar.get('name', 'Unknown'),
+                    'description': calendar.get('description', ''),
+                    'timezone': calendar.get('timezone', 'UTC'),
+                    'access_role': calendar.get('access_role', ''),
+                    'is_primary': calendar.get('is_primary', False),
+                    'is_selected': calendar.get('is_selected', True),
+                    'color_id': calendar.get('color_id', ''),
+                    'background_color': calendar.get('background_color', ''),
+                    'foreground_color': calendar.get('foreground_color', ''),
+                    'metadata': calendar.get('metadata', {})
+                }
+                
                 cur.execute("""
                     INSERT INTO calendars (
                         calendar_id, name, description, timezone, access_role,
@@ -455,10 +482,10 @@ class GoogleCalendarCollector:
                         metadata = EXCLUDED.metadata,
                         updated_at = CURRENT_TIMESTAMP
                 """, (
-                    calendar['id'], calendar['name'], calendar['description'],
-                    calendar['timezone'], calendar['access_role'], calendar['is_primary'],
-                    calendar['is_selected'], calendar['color_id'], calendar['background_color'],
-                    calendar['foreground_color'], json.dumps(calendar['metadata']), datetime.now()
+                    calendar_data['id'], calendar_data['name'], calendar_data['description'],
+                    calendar_data['timezone'], calendar_data['access_role'], calendar_data['is_primary'],
+                    calendar_data['is_selected'], calendar_data['color_id'], calendar_data['background_color'],
+                    calendar_data['foreground_color'], json.dumps(calendar_data['metadata']), datetime.now()
                 ))
             
             conn.commit()
