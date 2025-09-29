@@ -14,12 +14,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import AI components
-from ai.qa_system import CommunityQASystem
-from ai.rag_system import CommunityRAGSystem
-from ai.google_llm import GoogleLLM
-from api.health_endpoint import router as health_router
-from streaming.async_generator import AsyncAnswerGenerator, get_streaming
-from cache.answer_cache import get_cache
+from src.ai.qa_system import CommunityQASystem
+from src.ai.rag_system import CommunityRAGSystem
+from src.ai.google_llm import GoogleLLM
+from src.api.health_endpoint import router as health_router
+from src.streaming.async_generator import AsyncAnswerGenerator, get_streaming
+from src.cache.answer_cache import get_cache
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,8 +49,8 @@ qa_system: Optional[CommunityQASystem] = None
 async_generator: Optional[AsyncAnswerGenerator] = None
 
 # Import collectors for initial data collection
-from collectors.slack_collector import SlackCollector
-from collectors.github_collector import GitHubCollector
+from src.collectors.slack_collector import SlackCollector
+from src.collectors.github_collector import GitHubCollector
 
 # Pydantic models
 class QuestionRequest(BaseModel):
@@ -104,57 +104,7 @@ def get_qa_system() -> CommunityQASystem:
 async def check_if_initial_collection_needed() -> bool:
     """檢查是否需要進行初始數據收集"""
     try:
-        from storage.connection_pool import get_db_connection, return_db_connection
-        from psycopg2.extras import RealDictCursor
-        
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # 檢查是否已有數據
-        cur.execute("SELECT COUNT(*) as count FROM community_data")
-        result = cur.fetchone()
-        data_count = result['count'] if result else 0
-        
-        # 檢查是否有 Slack 數據
-        cur.execute("SELECT COUNT(*) as count FROM community_data WHERE platform = 'slack'")
-        result = cur.fetchone()
-        slack_data_count = result['count'] if result else 0
-        
-        # 檢查是否有初始化標記（如果表存在）
-        try:
-            cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
-            result = cur.fetchone()
-            flag_count = result['count'] if result else 0
-        except Exception:
-            # 如果 system_flags 表不存在，則 flag_count = 0
-            flag_count = 0
-        
-        cur.close()
-        return_db_connection(conn)
-        
-        # 如果有初始化標記，表示已經完成過初始收集，不需要重複收集
-        if flag_count > 0:
-            logger.info("檢測到初始化完成標記，跳過數據收集")
-            return False
-        
-        # 如果沒有數據且沒有初始化標記，則需要收集
-        if data_count == 0:
-            logger.info("沒有檢測到任何數據，需要進行初始收集")
-            return True
-        
-        # 如果有數據但沒有初始化標記，可能是舊的數據，需要設置標記
-        logger.info(f"檢測到 {data_count} 條現有數據，但沒有初始化標記，將設置標記並跳過收集")
-        return False
-        
-    except Exception as e:
-        logger.error(f"檢查初始收集狀態失敗: {e}")
-        # 如果檢查失敗，為了安全起見，不進行收集
-        return False
-
-async def check_and_set_initial_flag_if_needed():
-    """檢查並設置初始化標記（如果有數據但沒有標記）"""
-    try:
-        from storage.connection_pool import get_db_connection, return_db_connection
+        from src.storage.connection_pool import get_db_connection, return_db_connection
         from psycopg2.extras import RealDictCursor
         
         conn = get_db_connection()
@@ -166,23 +116,20 @@ async def check_and_set_initial_flag_if_needed():
         data_count = result['count'] if result else 0
         
         # 檢查是否有初始化標記
-        try:
-            cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
-            result = cur.fetchone()
-            flag_count = result['count'] if result else 0
-        except Exception:
-            flag_count = 0
+        cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
+        result = cur.fetchone()
+        flag_count = result['count'] if result else 0
         
         cur.close()
         return_db_connection(conn)
         
-        # 如果有數據但沒有標記，設置標記
-        if data_count > 0 and flag_count == 0:
-            logger.info(f"檢測到 {data_count} 條現有數據但沒有初始化標記，設置標記")
-            await set_initial_collection_completed()
+        # 如果沒有數據且沒有初始化標記，則需要收集
+        return data_count == 0 and flag_count == 0
         
     except Exception as e:
-        logger.error(f"檢查並設置初始化標記失敗: {e}")
+        logger.error(f"檢查初始收集狀態失敗: {e}")
+        # 如果檢查失敗，為了安全起見，不進行收集
+        return False
 
 @app.on_event("startup")
 async def startup_event():
@@ -198,8 +145,6 @@ async def startup_event():
         asyncio.create_task(background_data_collection())
         logger.info("後台數據收集任務已啟動")
     else:
-        # 檢查是否需要設置初始化標記（有數據但沒有標記的情況）
-        await check_and_set_initial_flag_if_needed()
         logger.info("跳過初始數據收集，系統已初始化")
 
 async def background_data_collection():
@@ -219,48 +164,37 @@ async def initial_data_collection():
     """初始數據收集，建立用戶映射"""
     try:
         # 檢查是否需要進行初始收集
-        from storage.connection_pool import get_db_connection, return_db_connection
+        from src.storage.connection_pool import get_db_connection, return_db_connection
         from psycopg2.extras import RealDictCursor
         
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 檢查是否已有用戶映射數據（如果表存在）
-        try:
-            cur.execute("SELECT COUNT(*) as count FROM user_name_mappings")
-            result = cur.fetchone()
-            user_mapping_count = result['count'] if result else 0
-        except Exception:
-            # 如果 user_name_mappings 表不存在，則 user_mapping_count = 0
-            user_mapping_count = 0
-        
-        # 檢查是否已有 Slack 數據
-        cur.execute("SELECT COUNT(*) as count FROM community_data WHERE platform = 'slack'")
+        # 檢查是否已有用戶映射數據
+        cur.execute("SELECT COUNT(*) as count FROM user_name_mappings")
         result = cur.fetchone()
-        slack_data_count = result['count'] if result else 0
+        user_mapping_count = result['count'] if result else 0
         
         cur.close()
         return_db_connection(conn)
         
-        logger.info(f"檢測到用戶映射記錄 {user_mapping_count} 條，Slack 數據 {slack_data_count} 條")
+        # 強制重新收集數據，不管是否已有用戶映射
+        logger.info(f"檢測到用戶映射記錄 {user_mapping_count} 條，但將強制重新收集數據")
+        logger.info("開始初始數據收集以建立用戶映射...")
         
         # 初始化收集器
         slack_collector = None
         github_collector = None
-        calendar_collector = None
         
-        # 初始化Slack收集器（只有在沒有 Slack 數據時才初始化）
-        if slack_data_count == 0:
-            slack_bot_token = os.getenv('SLACK_BOT_TOKEN')
-            slack_app_token = os.getenv('SLACK_APP_TOKEN')
-            if slack_bot_token and slack_app_token:
-                try:
-                    slack_collector = SlackCollector(slack_bot_token, slack_app_token)
-                    logger.info("Slack收集器初始化成功")
-                except Exception as e:
-                    logger.error(f"Slack收集器初始化失敗: {e}")
-        else:
-            logger.info(f"檢測到 {slack_data_count} 條 Slack 數據，跳過 Slack 收集")
+        # 初始化Slack收集器
+        slack_bot_token = os.getenv('SLACK_BOT_TOKEN')
+        slack_app_token = os.getenv('SLACK_APP_TOKEN')
+        if slack_bot_token and slack_app_token:
+            try:
+                slack_collector = SlackCollector(slack_bot_token, slack_app_token)
+                logger.info("Slack收集器初始化成功")
+            except Exception as e:
+                logger.error(f"Slack收集器初始化失敗: {e}")
         
         # 初始化GitHub收集器
         github_token = os.getenv('GITHUB_TOKEN')
@@ -275,14 +209,14 @@ async def initial_data_collection():
         calendar_service_account_file = os.getenv('GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE')
         if calendar_service_account_file:
             try:
-                from collectors.google_calendar_collector import GoogleCalendarCollector
+                from src.collectors.google_calendar_collector import GoogleCalendarCollector
                 calendar_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
                 calendar_collector = GoogleCalendarCollector(calendar_service_account_file, calendar_id)
                 logger.info("Google Calendar收集器初始化成功")
             except Exception as e:
                 logger.error(f"Google Calendar收集器初始化失敗: {e}")
         
-        # 收集Slack數據以建立用戶映射（只有在沒有 Slack 數據時才收集）
+        # 收集Slack數據以建立用戶映射
         if slack_collector:
             try:
                 logger.info("開始收集Slack數據以建立用戶映射...")
@@ -292,9 +226,9 @@ async def initial_data_collection():
                 
                 # 將Slack數據保存到數據庫
                 if slack_messages:
-                    from collectors.data_merger import DataMerger
-                    from storage.postgres_storage import PostgreSQLStorage
-                    from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    from src.collectors.data_merger import DataMerger
+                    from src.storage.postgres_storage import PostgreSQLStorage
+                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
                     
                     logger.info("開始處理Slack數據並保存到數據庫...")
                     data_merger = DataMerger()
@@ -335,9 +269,9 @@ async def initial_data_collection():
                 
                 # 將GitHub數據保存到數據庫
                 if github_data:
-                    from collectors.data_merger import DataMerger
-                    from storage.postgres_storage import PostgreSQLStorage
-                    from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    from src.collectors.data_merger import DataMerger
+                    from src.storage.postgres_storage import PostgreSQLStorage
+                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
                     
                     logger.info("開始處理GitHub數據並保存到數據庫...")
                     data_merger = DataMerger()
@@ -375,7 +309,7 @@ async def initial_data_collection():
                 logger.error(f"GitHub數據收集失敗: {e}")
         
         # 收集Google Calendar數據
-        if calendar_collector:
+        if 'calendar_collector' in locals():
             try:
                 logger.info("開始收集Google Calendar數據...")
                 calendar_data = calendar_collector.collect_all_calendars(days_back=90)
@@ -383,9 +317,9 @@ async def initial_data_collection():
                 
                 # 將Calendar數據保存到數據庫
                 if calendar_data.get('events'):
-                    from collectors.data_merger import DataMerger
-                    from storage.postgres_storage import PostgreSQLStorage
-                    from ai.gemini_embedding_generator import GeminiEmbeddingGenerator
+                    from src.collectors.data_merger import DataMerger
+                    from src.storage.postgres_storage import PostgreSQLStorage
+                    from src.ai.gemini_embedding_generator import GeminiEmbeddingGenerator
                     
                     logger.info("開始處理Google Calendar數據並保存到數據庫...")
                     data_merger = DataMerger()
@@ -432,7 +366,7 @@ async def initial_data_collection():
 async def set_initial_collection_completed():
     """設置初始收集完成標記"""
     try:
-        from storage.connection_pool import get_db_connection, return_db_connection
+        from src.storage.connection_pool import get_db_connection, return_db_connection
         
         conn = get_db_connection()
         cur = conn.cursor()

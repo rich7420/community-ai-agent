@@ -126,13 +126,19 @@ class UserStatsMCP:
                 SELECT metadata->>'real_name' as real_name,
                        metadata->>'display_name' as display_name,
                        metadata->>'user_name' as user_name,
-                       metadata->>'name' as name
+                       metadata->>'name' as name,
+                       metadata->'user_profile'->>'real_name' as profile_real_name,
+                       metadata->'user_profile'->>'display_name' as profile_display_name,
+                       metadata->'user_profile'->>'name' as profile_name
                 FROM community_data 
                 WHERE author_anon = %s AND platform = %s
                 AND (metadata->>'real_name' IS NOT NULL 
                      OR metadata->>'display_name' IS NOT NULL 
                      OR metadata->>'user_name' IS NOT NULL
-                     OR metadata->>'name' IS NOT NULL)
+                     OR metadata->>'name' IS NOT NULL
+                     OR metadata->'user_profile'->>'real_name' IS NOT NULL
+                     OR metadata->'user_profile'->>'display_name' IS NOT NULL
+                     OR metadata->'user_profile'->>'name' IS NOT NULL)
                 ORDER BY timestamp DESC
                 LIMIT 1
             """, (anonymized_id, platform))
@@ -143,9 +149,10 @@ class UserStatsMCP:
             
             if result:
                 # 優先使用 real_name，其次使用 display_name，然後 user_name，最後 name
-                real_name = result['real_name']
-                display_name = result['display_name']
-                user_name = result['user_name']
+                # 同時檢查 user_profile 中的信息
+                real_name = result['real_name'] or result['profile_real_name']
+                display_name = result['display_name'] or result['profile_display_name']
+                user_name = result['user_name'] or result['profile_name']
                 name = result['name']
                 
                 if real_name and real_name.strip():
