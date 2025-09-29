@@ -171,9 +171,23 @@ CREATE TRIGGER update_google_calendars_updated_at
 
 -- Create partitioned table for better performance
 CREATE TABLE IF NOT EXISTS community_data_partitioned (
-    LIKE community_data INCLUDING DEFAULTS INCLUDING INDEXES EXCLUDING IDENTITY EXCLUDING CONSTRAINTS,
+    id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author_anon TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    source_url TEXT,
+    metadata JSONB,
+    embedding TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     PRIMARY KEY (id, timestamp)
 ) PARTITION BY RANGE (timestamp);
+
+-- Create indexes for the partitioned table
+CREATE INDEX IF NOT EXISTS idx_community_data_partitioned_platform ON community_data_partitioned(platform);
+CREATE INDEX IF NOT EXISTS idx_community_data_partitioned_timestamp ON community_data_partitioned(timestamp);
+CREATE INDEX IF NOT EXISTS idx_community_data_partitioned_author ON community_data_partitioned(author_anon);
 
 -- Create monthly partitions for the current year and next year
 DO $$
