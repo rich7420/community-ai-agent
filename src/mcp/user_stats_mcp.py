@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from storage.connection_pool import get_db_connection, return_db_connection
+from utils.user_display_helper import UserDisplayHelper
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class UserStatsMCP:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self.user_display_helper = UserDisplayHelper()
     
     def get_user_stats(self, 
                       platform: str = "slack",
@@ -57,33 +59,73 @@ class UserStatsMCP:
             # 計算時間範圍
             start_date = datetime.now() - timedelta(days=days_back)
             
-            # 查詢用戶統計數據
+            # 查詢用戶統計數據，優先使用映射表中的顯示名稱
             query = """
+            WITH user_display_names AS (
+                SELECT DISTINCT 
+                    author_anon,
+                    COALESCE(
+                        unm.display_name,
+                        metadata->>'real_name',
+                        metadata->>'display_name', 
+                        metadata->>'user_name',
+                        metadata->>'name',
+                        metadata->'user_profile'->>'real_name',
+                        metadata->'user_profile'->>'display_name',
+                        metadata->'user_profile'->>'name',
+                        author_anon
+                    ) as display_name
+                FROM community_data cd
+                LEFT JOIN user_name_mappings unm ON cd.author_anon = unm.anonymized_id 
+                    AND unm.platform = 'slack' 
+                    AND unm.is_active = TRUE
+                WHERE cd.platform = %s 
+                    AND cd.timestamp >= %s
+                    AND cd.author_anon IS NOT NULL
+            ),
+            user_stats AS (
+                SELECT 
+                    author_anon,
+                    COUNT(*) as message_count,
+                    COUNT(CASE WHEN metadata->>'thread_ts' IS NOT NULL THEN 1 END) as reply_count,
+                    MAX(timestamp) as last_activity,
+                    COUNT(DISTINCT metadata->>'channel') as channel_count,
+                    array_agg(DISTINCT metadata->>'channel') as channels
+                FROM community_data 
+                WHERE platform = %s 
+                    AND timestamp >= %s
+                    AND author_anon IS NOT NULL
+                GROUP BY author_anon
+            )
             SELECT 
-                author_anon as user_name,
-                COUNT(*) as message_count,
-                COUNT(CASE WHEN metadata->>'thread_ts' IS NOT NULL THEN 1 END) as reply_count,
-                MAX(timestamp) as last_activity,
-                COUNT(DISTINCT metadata->>'channel') as channel_count,
-                array_agg(DISTINCT metadata->>'channel') as channels
-            FROM community_data 
-            WHERE platform = %s 
-                AND timestamp >= %s
-                AND author_anon IS NOT NULL
-            GROUP BY author_anon
-            ORDER BY message_count DESC
+                us.author_anon,
+                udn.display_name as user_name,
+                us.message_count,
+                us.reply_count,
+                us.last_activity,
+                us.channel_count,
+                us.channels,
+                -- 檢查是否有真實名稱
+                CASE 
+                    WHEN udn.display_name != us.author_anon THEN 1
+                    ELSE 0
+                END as has_real_name
+            FROM user_stats us
+            JOIN user_display_names udn ON us.author_anon = udn.author_anon
+            ORDER BY has_real_name DESC, us.message_count DESC
             LIMIT %s
             """
             
-            cur.execute(query, (platform, start_date, limit))
+            cur.execute(query, (platform, start_date, platform, start_date, limit))
             results = cur.fetchall()
             
             user_stats = []
             for row in results:
-                anonymized_id, message_count, reply_count, last_activity, channel_count, channels = row
+                anonymized_id, user_name, message_count, reply_count, last_activity, channel_count, channels, has_real_name = row
                 
-                # 嘗試獲取真實用戶名稱
-                user_name = self._get_user_display_name(anonymized_id, platform)
+                # 如果顯示名稱仍然是匿名化ID，嘗試從映射表獲取
+                if user_name == anonymized_id:
+                    user_name = self._get_user_display_name(anonymized_id, platform)
                 
                 # 計算emoji統計
                 emoji_stats = self._get_emoji_stats(cur, anonymized_id, platform, start_date)
@@ -190,7 +232,19 @@ class UserStatsMCP:
                 elif real_name and real_name.strip():
                     return real_name.strip()
             
-            # 如果都找不到，返回匿名ID
+            # 如果都找不到，嘗試為匿名ID創建一個友好的顯示名稱
+            # 提取用戶編號部分
+            if anonymized_id.startswith('user_'):
+                user_number = anonymized_id[5:]  # 移除 'user_' 前綴
+                try:
+                    # 嘗試將十六進制轉換為數字
+                    user_num = int(user_number, 16)
+                    return f"用戶{user_num}"
+                except ValueError:
+                    # 如果不是十六進制，使用原始編號
+                    return f"用戶{user_number}"
+            
+            # 如果都不符合，返回匿名ID
             return anonymized_id
             
         except Exception as e:
@@ -365,6 +419,44 @@ class UserStatsMCP:
                 'period_days': days_back,
                 'platform': platform
             }
+    
+    def get_formatted_user_activity_report(self, 
+                                          platform: str = "slack",
+                                          days_back: int = 30,
+                                          limit: int = 10) -> str:
+        """
+        獲取格式化的用戶活躍度報告，確保顯示真實用戶名稱
+        
+        Args:
+            platform: 平台名稱
+            days_back: 回溯天數
+            limit: 返回結果數量限制
+            
+        Returns:
+            格式化的報告文本
+        """
+        try:
+            # 獲取用戶統計數據
+            user_stats = self.get_user_stats(platform, days_back, limit)
+            
+            # 轉換為字典格式
+            user_stats_dict = []
+            for stat in user_stats:
+                user_stats_dict.append({
+                    'user_name': stat.user_name,
+                    'message_count': stat.message_count,
+                    'reply_count': stat.reply_count,
+                    'emoji_given_count': stat.emoji_given_count,
+                    'channel_count': stat.channel_count,
+                    'last_activity': stat.last_activity
+                })
+            
+            # 使用輔助工具格式化報告
+            return self.user_display_helper.format_user_activity_report(user_stats_dict, platform)
+            
+        except Exception as e:
+            self.logger.error(f"生成格式化用戶活躍度報告失敗: {e}")
+            return "無法生成用戶活躍度報告。"
     
     def get_multi_platform_summary(self, days_back: int = 90) -> Dict[str, Any]:
         """

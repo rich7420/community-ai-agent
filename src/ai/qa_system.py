@@ -14,7 +14,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 from ai.google_llm import GoogleLLM
 from ai.rag_system import CommunityRAGSystem
 from ai.prompts import CommunityPrompts
-from utils.logging_config import structured_logger
+from utils.user_display_helper import UserDisplayHelper
 from mcp.user_stats_mcp import get_slack_user_stats, get_slack_activity_summary
 from mcp.calendar_mcp_fixed import CalendarMCPFixed
 from cache.answer_cache import get_cache
@@ -57,6 +57,7 @@ class CommunityQASystem:
         
         # Initialize MCP services
         self.calendar_mcp = CalendarMCPFixed()
+        self.user_display_helper = UserDisplayHelper()
         
         # Initialize prompt templates
         self.qa_prompt = CommunityPrompts.get_qa_prompt()
@@ -533,7 +534,8 @@ class CommunityQASystem:
         
         # 列出最活躍的前三名用戶
         for i, user in enumerate(user_stats[:3], 1):
-            user_name = user['user_name']
+            # 確保使用真實用戶名稱
+            user_name = self.user_display_helper.get_display_name(user['user_name'], 'slack')
             message_count = user['message_count']
             reply_count = user['reply_count']
             emoji_given = user['emoji_given']

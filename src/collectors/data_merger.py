@@ -286,6 +286,60 @@ class DataMerger:
         self.logger.info(f"所有資料合併完成，共 {len(cleaned_records)} 條記錄")
         return cleaned_records
     
+    def save_record(self, record: StandardizedRecord) -> bool:
+        """
+        保存標準化記錄到數據庫
+        
+        Args:
+            record: 標準化記錄
+            
+        Returns:
+            是否保存成功
+        """
+        try:
+            from storage.connection_pool import get_db_connection, return_db_connection
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            # 插入或更新記錄
+            cur.execute("""
+                INSERT INTO community_data (
+                    id, platform, content, author_anon, timestamp, source_url, metadata, created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) ON CONFLICT (id) DO UPDATE SET
+                    content = EXCLUDED.content,
+                    author_anon = EXCLUDED.author_anon,
+                    timestamp = EXCLUDED.timestamp,
+                    source_url = EXCLUDED.source_url,
+                    metadata = EXCLUDED.metadata,
+                    updated_at = EXCLUDED.updated_at
+            """, (
+                record.id,
+                record.platform,
+                record.content,
+                record.author,
+                record.timestamp,
+                record.source_url,
+                json.dumps(record.metadata),
+                record.created_at or datetime.now(),
+                record.updated_at or datetime.now()
+            ))
+            
+            conn.commit()
+            cur.close()
+            return_db_connection(conn)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"保存記錄失敗: {e}")
+            if 'conn' in locals():
+                conn.rollback()
+                return_db_connection(conn)
+            return False
+    
     def _validate_slack_message(self, msg) -> bool:
         """驗證Slack訊息"""
         # 處理 SlackMessage 對象或字典
@@ -372,9 +426,26 @@ class DataMerger:
                     'bot_id': getattr(msg, 'bot_id', None),
                     'subtype': getattr(msg, 'subtype', None),
                 }
+                
+                # 添加用戶信息到metadata
+                if hasattr(msg, 'metadata') and msg.metadata:
+                    metadata.update({
+                        'real_name': msg.metadata.get('real_name'),
+                        'display_name': msg.metadata.get('display_name'),
+                        'user_name': msg.metadata.get('user_name'),
+                        'name': msg.metadata.get('name'),
+                        'user_info': msg.metadata.get('user_info'),
+                        'original_user': msg.metadata.get('original_user'),
+                    })
                 content = msg.text
-                # 使用匿名化的用戶ID
-                author = self.pii_filter.anonymize_user(msg.user, getattr(msg, 'user_name', ''))
+                # 使用匿名化的用戶ID，從metadata中獲取真實用戶名稱
+                user_name = ''
+                if hasattr(msg, 'metadata') and msg.metadata:
+                    user_name = (msg.metadata.get('real_name') or 
+                               msg.metadata.get('display_name') or 
+                               msg.metadata.get('user_name') or 
+                               msg.metadata.get('name', ''))
+                author = self.pii_filter.anonymize_user(msg.user, user_name)
             else:
                 # 字典格式
                 record_id = f"slack_{msg['channel']}_{msg['ts']}"
@@ -721,72 +792,6 @@ class DataMerger:
             return True
             
         except Exception as e:
-            self.logger.error(f"驗證GitHub文件失敗: {e}")
-            return False
-    
-    def _convert_github_file_to_standard(self, file_data) -> Optional[StandardizedRecord]:
-        """將GitHub文件轉換為標準格式"""
-        try:
-            # 處理 dataclass 對象或字典
-            if hasattr(file_data, '__dict__'):
-                # GitHubFile dataclass 對象
-                sha = file_data.sha
-                content = file_data.content
-                path = file_data.path
-                author = file_data.author
-                last_modified = file_data.last_modified
-                url = file_data.url
-                size = file_data.size
-                metadata = file_data.metadata
-            else:
-                # 字典格式
-                sha = file_data.get('sha', '')
-                content = file_data.get('content', '')
-                path = file_data.get('path', '')
-                author = file_data.get('author', 'unknown')
-                last_modified = file_data.get('last_modified', datetime.now())
-                url = file_data.get('url', '')
-                size = file_data.get('size', 0)
-                metadata = file_data.get('metadata', {})
-            
-            # 生成唯一ID
-            record_id = f"github_file_{sha}"
-            
-            # 構建內容（包含路徑信息）
-            if path:
-                formatted_content = f"文件路徑: {path}\n\n{content}"
-            else:
-                formatted_content = content
-            
-            # 構建元資料
-            file_metadata = {
-                'type': 'file',
-                'path': path,
-                'sha': sha,
-                'size': size,
-                'file_type': metadata.get('file_type', 'unknown'),
-                'importance_score': metadata.get('importance_score', 0),
-                'directory': metadata.get('directory', ''),
-                'repository': metadata.get('repository', ''),
-                'encoding': metadata.get('encoding', 'utf-8')
-            }
-            
-            return StandardizedRecord(
-                id=record_id,
-                platform='github',
-                content=formatted_content,
-                author=author,
-                timestamp=last_modified,
-                source_url=url,
-                metadata=file_metadata,
-                created_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-            
-        except Exception as e:
-            self.logger.error(f"轉換GitHub文件失敗: {e}")
-            return None
-
             self.logger.error(f"驗證GitHub文件失敗: {e}")
             return False
     

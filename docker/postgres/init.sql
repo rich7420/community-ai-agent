@@ -53,6 +53,19 @@ CREATE TABLE IF NOT EXISTS collection_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create system flags table for tracking initialization status
+CREATE TABLE IF NOT EXISTS system_flags (
+    id SERIAL PRIMARY KEY,
+    flag_name TEXT NOT NULL UNIQUE,
+    flag_value TEXT,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create index for system flags
+CREATE INDEX IF NOT EXISTS idx_system_flags_name ON system_flags(flag_name);
+
 -- Create user name mapping table for displaying real names instead of anonymized IDs
 CREATE TABLE IF NOT EXISTS user_name_mappings (
     id SERIAL PRIMARY KEY,
