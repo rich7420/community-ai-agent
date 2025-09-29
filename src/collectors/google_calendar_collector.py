@@ -463,13 +463,13 @@ class GoogleCalendarCollector:
                 }
                 
                 cur.execute("""
-                    INSERT INTO calendars (
-                        calendar_id, name, description, timezone, access_role,
+                    INSERT INTO google_calendars (
+                        id, name, description, timezone, access_role,
                         is_primary, is_selected, color_id, background_color,
                         foreground_color, metadata, created_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    ) ON CONFLICT (calendar_id) DO UPDATE SET
+                    ) ON CONFLICT (id) DO UPDATE SET
                         name = EXCLUDED.name,
                         description = EXCLUDED.description,
                         timezone = EXCLUDED.timezone,
