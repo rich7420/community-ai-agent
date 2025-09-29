@@ -171,7 +171,7 @@ CREATE TRIGGER update_google_calendars_updated_at
 
 -- Create partitioned table for better performance
 CREATE TABLE IF NOT EXISTS community_data_partitioned (
-    LIKE community_data INCLUDING ALL,
+    LIKE community_data INCLUDING DEFAULTS INCLUDING INDEXES EXCLUDING IDENTITY EXCLUDING CONSTRAINTS,
     PRIMARY KEY (id, timestamp)
 ) PARTITION BY RANGE (timestamp);
 
