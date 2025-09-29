@@ -114,14 +114,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                 >
                   <div className="p-3">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white break-words overflow-wrap-anywhere">
                           {conversation.title}
                         </h4>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
                           {formatDate(conversation.updatedAt)}
                         </p>
-                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate">
                           {conversation.messages.length} 條訊息
                         </p>
                       </div>

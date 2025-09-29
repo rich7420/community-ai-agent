@@ -44,7 +44,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
       <div className={cn('flex max-w-[85%] sm:max-w-[80%] flex-col', isUser ? 'items-end' : 'items-start')}>
         <div
           className={cn(
-            'rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 shadow-sm',
+            'rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 shadow-sm break-words overflow-hidden',
             isUser
               ? 'bg-coffee-500 text-white'
               : 'bg-white text-gray-900 dark:bg-gray-700 dark:text-white',
@@ -62,7 +62,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
               <span className="text-xs sm:text-sm">小饅頭正在思考中...</span>
             </div>
           ) : (
-            <div className="prose prose-xs sm:prose-sm max-w-none dark:prose-invert">
+            <div className="prose prose-xs sm:prose-sm max-w-none dark:prose-invert break-words overflow-wrap-anywhere">
               <ReactMarkdown
                 components={{
                   code({ className, children }) {
@@ -72,6 +72,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, showAvatar = tru
                         style={tomorrow as any}
                         language={match[1]}
                         PreTag="div"
+                        className="overflow-x-auto"
                       >
                         {String(children).replace(/\n$/, '')}
                       </SyntaxHighlighter>

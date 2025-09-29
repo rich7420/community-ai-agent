@@ -244,6 +244,38 @@
   }
 }
 
+/* Text overflow and word breaking utilities */
+.break-words {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+}
+
+.word-break-all {
+  word-break: break-all;
+}
+
+.text-overflow-ellipsis {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Ensure long URLs and text don't break layout */
+a, .prose a {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* Code blocks should scroll horizontally */
+pre, code {
+  overflow-x: auto;
+  white-space: pre;
+}
+
 /* Print styles */
 @media print {
   .no-print {

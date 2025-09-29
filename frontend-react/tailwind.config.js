@@ -74,6 +74,15 @@ export default {
         '18': '4.5rem',
         '88': '22rem',
       },
+      wordBreak: {
+        'break-word': 'break-word',
+        'break-all': 'break-all',
+        'keep-all': 'keep-all',
+      },
+      overflowWrap: {
+        'anywhere': 'anywhere',
+        'break-word': 'break-word',
+      },
     },
   },
   plugins: [],

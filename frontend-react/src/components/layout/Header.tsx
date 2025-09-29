@@ -26,13 +26,13 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-white/20 text-white">
             <span className="text-sm sm:text-lg font-bold">源</span>
           </div>
-          <div className="hidden sm:block">
-            <h1 className="text-sm sm:text-lg font-bold text-white">源來適你 - Apache Local Community Taipei</h1>
-            <p className="text-xs sm:text-sm text-coffee-100">小饅頭 AI 助手 - 基於 GitHub 與 Slack 資料的社群服務</p>
+          <div className="hidden sm:block min-w-0 flex-1">
+            <h1 className="text-sm sm:text-lg font-bold text-white break-words overflow-wrap-anywhere">源來適你 - Apache Local Community Taipei</h1>
+            <p className="text-xs sm:text-sm text-coffee-100 break-words overflow-wrap-anywhere">小饅頭 AI 助手 - 基於 GitHub 與 Slack 資料的社群服務</p>
           </div>
-          <div className="block sm:hidden">
-            <h1 className="text-sm font-bold text-white">源來適你</h1>
-            <p className="text-xs text-coffee-100">小饅頭 AI 助手</p>
+          <div className="block sm:hidden min-w-0 flex-1">
+            <h1 className="text-sm font-bold text-white break-words overflow-wrap-anywhere">源來適你</h1>
+            <p className="text-xs text-coffee-100 break-words overflow-wrap-anywhere">小饅頭 AI 助手</p>
           </div>
         </div>
       </div>
