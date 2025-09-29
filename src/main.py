@@ -115,6 +115,11 @@ async def check_if_initial_collection_needed() -> bool:
         result = cur.fetchone()
         data_count = result['count'] if result else 0
         
+        # 檢查是否有 Slack 數據
+        cur.execute("SELECT COUNT(*) as count FROM community_data WHERE platform = 'slack'")
+        result = cur.fetchone()
+        slack_data_count = result['count'] if result else 0
+        
         # 檢查是否有初始化標記（如果表存在）
         try:
             cur.execute("SELECT COUNT(*) as count FROM system_flags WHERE flag_name = 'initial_collection_completed'")
@@ -126,6 +131,11 @@ async def check_if_initial_collection_needed() -> bool:
         
         cur.close()
         return_db_connection(conn)
+        
+        # 如果有 Slack 數據，則不需要重新收集 Slack，但仍需要收集其他數據
+        if slack_data_count > 0:
+            logger.info(f"檢測到 {slack_data_count} 條 Slack 數據，將跳過 Slack 收集")
+            return True  # 仍需要收集 GitHub 和 Calendar
         
         # 如果沒有數據且沒有初始化標記，則需要收集
         return data_count == 0 and flag_count == 0
@@ -183,26 +193,33 @@ async def initial_data_collection():
             # 如果 user_name_mappings 表不存在，則 user_mapping_count = 0
             user_mapping_count = 0
         
+        # 檢查是否已有 Slack 數據
+        cur.execute("SELECT COUNT(*) as count FROM community_data WHERE platform = 'slack'")
+        result = cur.fetchone()
+        slack_data_count = result['count'] if result else 0
+        
         cur.close()
         return_db_connection(conn)
         
-        # 強制重新收集數據，不管是否已有用戶映射
-        logger.info(f"檢測到用戶映射記錄 {user_mapping_count} 條，但將強制重新收集數據")
-        logger.info("開始初始數據收集以建立用戶映射...")
+        logger.info(f"檢測到用戶映射記錄 {user_mapping_count} 條，Slack 數據 {slack_data_count} 條")
         
         # 初始化收集器
         slack_collector = None
         github_collector = None
+        calendar_collector = None
         
-        # 初始化Slack收集器
-        slack_bot_token = os.getenv('SLACK_BOT_TOKEN')
-        slack_app_token = os.getenv('SLACK_APP_TOKEN')
-        if slack_bot_token and slack_app_token:
-            try:
-                slack_collector = SlackCollector(slack_bot_token, slack_app_token)
-                logger.info("Slack收集器初始化成功")
-            except Exception as e:
-                logger.error(f"Slack收集器初始化失敗: {e}")
+        # 初始化Slack收集器（只有在沒有 Slack 數據時才初始化）
+        if slack_data_count == 0:
+            slack_bot_token = os.getenv('SLACK_BOT_TOKEN')
+            slack_app_token = os.getenv('SLACK_APP_TOKEN')
+            if slack_bot_token and slack_app_token:
+                try:
+                    slack_collector = SlackCollector(slack_bot_token, slack_app_token)
+                    logger.info("Slack收集器初始化成功")
+                except Exception as e:
+                    logger.error(f"Slack收集器初始化失敗: {e}")
+        else:
+            logger.info(f"檢測到 {slack_data_count} 條 Slack 數據，跳過 Slack 收集")
         
         # 初始化GitHub收集器
         github_token = os.getenv('GITHUB_TOKEN')
@@ -224,7 +241,7 @@ async def initial_data_collection():
             except Exception as e:
                 logger.error(f"Google Calendar收集器初始化失敗: {e}")
         
-        # 收集Slack數據以建立用戶映射
+        # 收集Slack數據以建立用戶映射（只有在沒有 Slack 數據時才收集）
         if slack_collector:
             try:
                 logger.info("開始收集Slack數據以建立用戶映射...")
@@ -317,7 +334,7 @@ async def initial_data_collection():
                 logger.error(f"GitHub數據收集失敗: {e}")
         
         # 收集Google Calendar數據
-        if 'calendar_collector' in locals():
+        if calendar_collector:
             try:
                 logger.info("開始收集Google Calendar數據...")
                 calendar_data = calendar_collector.collect_all_calendars(days_back=90)

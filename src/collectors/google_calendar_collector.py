@@ -7,6 +7,7 @@ Google Calendar 數據收集器
 import os
 import json
 import logging
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -52,10 +53,10 @@ class GoogleCalendarCollector:
         self.logger = logging.getLogger(__name__)
         self.service_account_file = service_account_file or os.getenv('GOOGLE_CALENDAR_SERVICE_ACCOUNT_FILE')
         self.calendar_id = calendar_id or os.getenv('GOOGLE_CALENDAR_ID', 'primary')
-        # 如果calendar_id是完整的group.calendar.google.com格式，直接使用
-        # 如果是舊的格式，需要轉換
-        if self.calendar_id and '@' not in self.calendar_id and len(self.calendar_id) == 64:
-            self.calendar_id = f"{self.calendar_id}@group.calendar.google.com"
+        
+        # 處理日曆 ID 格式
+        self.calendar_id = self._normalize_calendar_id(self.calendar_id)
+        
         self.scopes = [os.getenv('GOOGLE_CALENDAR_SCOPES', 'https://www.googleapis.com/auth/calendar.readonly')]
         
         self.service = None
@@ -68,6 +69,48 @@ class GoogleCalendarCollector:
         }
         
         self._initialize_service()
+    
+    def _normalize_calendar_id(self, calendar_id: str) -> str:
+        """標準化日曆 ID 格式"""
+        if not calendar_id or calendar_id == 'primary':
+            return 'primary'
+        
+        # 如果已經是完整的 email 格式，直接返回
+        if '@' in calendar_id:
+            return calendar_id
+        
+        # 如果是 Base64 編碼的 ID（長度超過 64 字符）
+        if len(calendar_id) > 64:
+            try:
+                # 嘗試解碼 Base64
+                decoded_bytes = base64.b64decode(calendar_id)
+                decoded_str = decoded_bytes.decode('utf-8')
+                self.logger.info(f"解碼日曆 ID: {calendar_id} -> {decoded_str}")
+                return decoded_str
+            except Exception as e:
+                self.logger.warning(f"無法解碼日曆 ID {calendar_id}: {e}")
+                # 如果解碼失敗，嘗試添加 @group.calendar.google.com
+                return f"{calendar_id}@group.calendar.google.com"
+        
+        # 如果是 64 字符長度的 ID，可能是 Base64 編碼
+        if len(calendar_id) == 64 and calendar_id.isalnum():
+            try:
+                # 嘗試解碼 Base64
+                decoded_bytes = base64.b64decode(calendar_id)
+                decoded_str = decoded_bytes.decode('utf-8')
+                self.logger.info(f"解碼日曆 ID: {calendar_id} -> {decoded_str}")
+                return decoded_str
+            except Exception as e:
+                self.logger.warning(f"無法解碼日曆 ID {calendar_id}: {e}")
+                # 如果解碼失敗，嘗試添加 @group.calendar.google.com
+                return f"{calendar_id}@group.calendar.google.com"
+        
+        # 如果長度不是 64，可能是其他格式，嘗試添加 @group.calendar.google.com
+        if len(calendar_id) > 20:  # 假設是有效的日曆 ID
+            return f"{calendar_id}@group.calendar.google.com"
+        
+        # 如果都不符合，返回原始值
+        return calendar_id
     
     def _initialize_service(self):
         """初始化 Google Calendar API 服務"""
@@ -148,6 +191,11 @@ class GoogleCalendarCollector:
             self.logger.info(f"開始收集日曆事件，日曆ID: {target_calendar_id}")
             self.stats['start_time'] = datetime.now()
             
+            # 首先驗證日曆是否存在
+            if not self._validate_calendar_access(target_calendar_id):
+                self.logger.error(f"無法訪問日曆: {target_calendar_id}")
+                return events
+            
             # 計算時間範圍
             now = datetime.now(timezone.utc)
             time_min = (now - timedelta(days=days_back)).isoformat()
@@ -177,13 +225,39 @@ class GoogleCalendarCollector:
             self.logger.info(f"事件收集完成，共 {len(events)} 個事件")
             
         except HttpError as e:
-            self.logger.error(f"收集日曆事件失敗: {e}")
+            if e.resp.status == 404:
+                self.logger.error(f"日曆不存在或無權限訪問: {target_calendar_id}")
+                self.logger.info("嘗試使用 'primary' 日曆...")
+                # 嘗試使用 primary 日曆
+                if target_calendar_id != 'primary':
+                    return self.collect_events(days_back, 'primary')
+            else:
+                self.logger.error(f"收集日曆事件失敗: {e}")
             self.stats['errors'] += 1
         except Exception as e:
             self.logger.error(f"收集日曆事件時發生錯誤: {e}")
             self.stats['errors'] += 1
         
         return events
+    
+    def _validate_calendar_access(self, calendar_id: str) -> bool:
+        """驗證日曆訪問權限"""
+        try:
+            # 嘗試獲取日曆信息
+            calendar_info = self.service.calendars().get(calendarId=calendar_id).execute()
+            self.logger.info(f"成功驗證日曆訪問: {calendar_info.get('summary', calendar_id)}")
+            return True
+        except HttpError as e:
+            if e.resp.status == 404:
+                self.logger.error(f"日曆不存在: {calendar_id}")
+            elif e.resp.status == 403:
+                self.logger.error(f"無權限訪問日曆: {calendar_id}")
+            else:
+                self.logger.error(f"驗證日曆訪問失敗: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"驗證日曆訪問時發生錯誤: {e}")
+            return False
     
     def _parse_event(self, event_data: Dict[str, Any], calendar_id: str) -> Optional[CalendarEvent]:
         """解析單個事件數據"""
@@ -271,9 +345,32 @@ class GoogleCalendarCollector:
             calendars = self.collect_calendars()
             result['calendars'] = calendars
             
+            # 如果沒有找到日曆，嘗試使用 primary 日曆
+            if not calendars:
+                self.logger.warning("沒有找到任何日曆，嘗試使用 primary 日曆")
+                calendars = [{'id': 'primary', 'name': 'Primary Calendar', 'description': 'Default calendar'}]
+                result['calendars'] = calendars
+            
             # 收集主要日曆的事件
             events = self.collect_events(days_back)
             result['events'] = events
+            
+            # 如果主要日曆沒有事件，嘗試收集所有可用日曆的事件
+            if not events and calendars:
+                self.logger.info("主要日曆沒有事件，嘗試收集所有可用日曆的事件")
+                all_events = []
+                for calendar in calendars:
+                    calendar_id = calendar.get('id')
+                    if calendar_id and calendar_id != self.calendar_id:
+                        try:
+                            calendar_events = self.collect_events(days_back, calendar_id)
+                            all_events.extend(calendar_events)
+                            self.logger.info(f"從日曆 {calendar.get('name', calendar_id)} 收集到 {len(calendar_events)} 個事件")
+                        except Exception as e:
+                            self.logger.error(f"收集日曆 {calendar_id} 事件失敗: {e}")
+                
+                result['events'] = all_events
+                events = all_events
             
             self.logger.info(f"所有日曆數據收集完成，共 {len(calendars)} 個日曆，{len(events)} 個事件")
             
