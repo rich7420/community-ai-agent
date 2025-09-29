@@ -83,10 +83,7 @@ class UserStatsMCP:
                 anonymized_id, message_count, reply_count, last_activity, channel_count, channels = row
                 
                 # 嘗試獲取真實用戶名稱
-                from utils.pii_filter import PIIFilter
-                pii_filter = PIIFilter()
-                display_name = pii_filter._get_display_name_by_original_id(anonymized_id, platform)
-                user_name = display_name if display_name else anonymized_id
+                user_name = self._get_user_display_name(anonymized_id, platform)
                 
                 # 計算emoji統計
                 emoji_stats = self._get_emoji_stats(cur, anonymized_id, platform, start_date)
@@ -114,6 +111,73 @@ class UserStatsMCP:
         except Exception as e:
             self.logger.error(f"獲取用戶統計數據失敗: {e}")
             return []
+    
+    def _get_user_display_name(self, anonymized_id: str, platform: str) -> str:
+        """獲取用戶顯示名稱"""
+        try:
+            from storage.connection_pool import get_db_connection, return_db_connection
+            from psycopg2.extras import RealDictCursor
+            
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # 查詢用戶映射表獲取顯示名稱
+            cur.execute("""
+                SELECT display_name, real_name, aliases
+                FROM user_name_mappings 
+                WHERE anonymized_id = %s AND platform = %s AND is_active = TRUE
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (anonymized_id, platform))
+            
+            result = cur.fetchone()
+            cur.close()
+            return_db_connection(conn)
+            
+            if result:
+                # 優先使用 display_name，其次使用 real_name
+                display_name = result['display_name'] or result['real_name']
+                if display_name:
+                    return display_name
+            
+            # 如果沒有找到映射，嘗試從社區數據中獲取
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cur.execute("""
+                SELECT metadata->>'real_name' as real_name,
+                       metadata->>'display_name' as display_name,
+                       metadata->>'user_name' as user_name
+                FROM community_data 
+                WHERE author_anon = %s AND platform = %s
+                AND (metadata->>'real_name' IS NOT NULL OR metadata->>'display_name' IS NOT NULL)
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """, (anonymized_id, platform))
+            
+            result = cur.fetchone()
+            cur.close()
+            return_db_connection(conn)
+            
+            if result:
+                # 優先使用 real_name，其次使用 display_name，最後使用 user_name
+                real_name = result['real_name']
+                display_name = result['display_name']
+                user_name = result['user_name']
+                
+                if real_name:
+                    return real_name
+                elif display_name:
+                    return display_name
+                elif user_name:
+                    return user_name
+            
+            # 如果都找不到，返回匿名ID
+            return anonymized_id
+            
+        except Exception as e:
+            self.logger.error(f"獲取用戶顯示名稱失敗: {e}")
+            return anonymized_id
     
     def _get_emoji_stats(self, cur, user_name: str, platform: str, start_date: datetime) -> Dict[str, int]:
         """獲取用戶emoji統計"""
@@ -179,7 +243,8 @@ class UserStatsMCP:
         result = []
         for stats in user_stats:
             result.append({
-                'user_name': stats.user_name,
+                'user_id': stats.user_id,  # 匿名ID
+                'user_name': stats.user_name,  # 真實姓名或顯示名稱
                 'message_count': stats.message_count,
                 'reply_count': stats.reply_count,
                 'emoji_given': stats.emoji_given_count,
