@@ -65,7 +65,7 @@ class SlackCollector:
         
         # Rate limiting 控制
         self.rate_limit_retries = 0
-        self.max_rate_limit_retries = 5
+        self.max_rate_limit_retries = 30
     
     def _handle_rate_limit(self, error: Exception) -> bool:
         """處理 rate limiting 錯誤"""
