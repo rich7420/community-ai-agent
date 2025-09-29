@@ -65,7 +65,7 @@ class SlackCollector:
         
         # Rate limiting 控制
         self.rate_limit_retries = 0
-        self.max_rate_limit_retries = 30
+        self.max_rate_limit_retries = 500
     
     def _handle_rate_limit(self, error: Exception) -> bool:
         """處理 rate limiting 錯誤"""
@@ -75,7 +75,7 @@ class SlackCollector:
                 self.logger.error(f"達到最大重試次數 ({self.max_rate_limit_retries})，停止重試")
                 return False
             
-            wait_time = int(error.response.get('headers', {}).get('Retry-After', 15))
+            wait_time = int(error.response.get('headers', {}).get('Retry-After', 10))
             self.logger.warning(f"API限制，第 {self.rate_limit_retries} 次重試，等待 {wait_time} 秒")
             time.sleep(wait_time)
             return True
